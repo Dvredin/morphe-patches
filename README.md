@@ -104,20 +104,6 @@ Select the app you want to patch inside Morphe Manager, follow all instructions 
 
 <!-- PATCHES_END -->
 
-## Waze
-
-The same bundle patches Waze (5.24.5.0): **Full black** (a true-black night map and dark screens for AMOLED), **Hide ads** (sponsored pins on the map and on Android Auto, the full-screen ads while you are stopped, partner coupons, promotional splash screens, profile targeting and Waze's own ad requests), **Bigger speedometer**, **Map skin** (bigger map labels, a wider navigation arrow, a warm day background), **No Google Assistant**, **No AI reporting** (the Gemini voice reporting assistant and its prompts), **All moods**, **Report speed limit** and the alert settings Waze's server normally decides for you: **Speed cameras everywhere**, **Speed camera sound at any speed**, **Alert distances**, **Speed limit sign** and **Navigation distances**. These are set and locked in Waze's own configuration, so a sync with Waze's server cannot put its values back. The patches that are against the law in some countries, and the ones that change how Waze behaves rather than remove something, are off by default; switch them on in Morphe Manager.
-
-**Install the patched Waze as a root (mount) install.** Waze checks the app's signature through Google's Play Integrity when you create an account or log in. A patched Waze installed the normal way is re-signed, so that check fails and it cannot sign in. A mount install keeps Waze's own signature and your session.
-
-Ungoogled Maps gets the two things people keep Waze for: a **speeding chime** and **speed and red light camera alerts** from OpenStreetMap, with the cameras as pins on the map. Both live under **Waze Features** on the account sheet.
-
-## AllTrails
-
-AllTrails (26.3.20) gets an **Experimental** row in your profile's menu that opens a screen with: **Better tracking** (recordings the way Gaia GPS makes them: the phone's GPS directly with every fix delivered live, bad fixes dropped, no trail-biased smoothing, sea-level elevation), **Better filters** (the trail filter's sliders move in fine steps: rating in 0.1 stars, length in 0.1 mi or km, elevation in 10 ft or 5 m), **Remember filters** (the filters you set survive going home and restarting), a **2D / 3D compass** (tapping the compass in navigate mode switches between the tilted 3D view and a flat north-up map, as Google Maps does) and a **Theme** choice (follow phone, light, dark or AMOLED black). **Black icon** gives the build a white-on-black logo and splash so it is easy to tell apart from stock, and **Change package name** installs it beside the stock app.
-
-AllTrails' APK uses ZIP data descriptors that older Morphe builds mangle when signing ("Malformed ZIP entry"); patch it with a Morphe Manager built on patcher 1.14 or newer (Morphe Desktop 1.17 and up).
-
 ## Building
 
 To build bearinmind patches, follow the [Morphe documentation](https://github.com/MorpheApp/morphe-documentation).
