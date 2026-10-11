@@ -2,11 +2,12 @@ package org.ungoogled.patches.waze
 
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
-import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.patch.intOption
 import app.morphe.patcher.patch.stringOption
+import app.morphe.patcher.util.smali.ExternalLabel
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import org.ungoogled.patches.waze.WazeConstants.COMPATIBILITY_WAZE
@@ -28,8 +29,9 @@ val wazeHideAdsPatch = bytecodePatch(
     dependsOn(wazeConfigOverridesPatch)
 
     execute {
-        // The page an ad is requested for is blank, so Waze's ad server has nothing to answer.
-        // The getter is `iget-object p0, p0, ->pageUrl_; return-object p0` on one register.
+        // The page an ad is requested for is blank while Hide ads is switched on, so Waze's ad server has
+        // nothing to answer. The getter is `iget-object p0, p0, ->pageUrl_; return-object p0` on one
+        // register; the field's value goes through Customization.pageUrl on its way out.
         val pageUrl = mutableClassDefBy(ADVIL_REQUEST).methods.singleOrNull {
             it.name == "getPageUrl" && it.parameterTypes.isEmpty() && it.returnType == "Ljava/lang/String;"
         } ?: throw PatchException("$ADVIL_REQUEST.getPageUrl() not found")
@@ -37,23 +39,30 @@ val wazeHideAdsPatch = bytecodePatch(
         if (getter.size != 2 || getter[0].opcode != Opcode.IGET_OBJECT || getter[1].opcode != Opcode.RETURN_OBJECT) {
             throw PatchException("$ADVIL_REQUEST.getPageUrl() is not a plain getter any more")
         }
-        pageUrl.replaceInstruction(0, "const-string v${(getter[1] as OneRegisterInstruction).registerA}, \"\"")
+        val url = (getter[1] as OneRegisterInstruction).registerA
+        pageUrl.addInstructions(
+            1,
+            """
+                invoke-static { v$url }, $WAZE_CUSTOMIZATION->pageUrl(Ljava/lang/String;)Ljava/lang/String;
+                move-result-object v$url
+            """,
+        )
 
-        keepWazeConfig("CONFIG_VALUE_GOOGLE_ADS_FEATURE_ENABLED", false)
-        keepWazeConfig("CONFIG_VALUE_GOOGLE_ADS_IN_CAR_ENABLED", false)
-        keepWazeConfig("CONFIG_VALUE_GOOGLE_ADS_DISCOVERY_PINS_ENABLED", false)
-        keepWazeConfig("CONFIG_VALUE_GOOGLE_ADS_MAX_CONCURRENT_PINS", 0)
-        keepWazeConfig("CONFIG_VALUE_GOOGLE_ADS_IN_CAR_MAX_CONCURRENT_PINS", 0)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_GOOGLE_ADS_FEATURE_ENABLED", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_GOOGLE_ADS_IN_CAR_ENABLED", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_GOOGLE_ADS_DISCOVERY_PINS_ENABLED", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_GOOGLE_ADS_MAX_CONCURRENT_PINS", 0)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_GOOGLE_ADS_IN_CAR_MAX_CONCURRENT_PINS", 0)
         // A stopped car is shown a "takeover" ad at most this often: about once a lifetime.
-        keepWazeConfig("CONFIG_VALUE_ZSPEED_MIN_TAKEOVER_REQUEST_INTERVAL_SEC", 2_000_000_000)
-        keepWazeConfig("CONFIG_VALUE_ADS_INVENTORY_PREDICTION_ENABLED", false)
-        keepWazeConfig("CONFIG_VALUE_AD_EVENTS_FEATURE_ENABLED", false)
-        keepWazeConfig("CONFIG_VALUE_ADS_ALLOW_PROFILE_TARGETING_DEFAULT", false)
-        keepWazeConfig("CONFIG_VALUE_ADS_ALLOW_PROFILE_TARGETING", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_ZSPEED_MIN_TAKEOVER_REQUEST_INTERVAL_SEC", 2_000_000_000)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_ADS_INVENTORY_PREDICTION_ENABLED", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_AD_EVENTS_FEATURE_ENABLED", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_ADS_ALLOW_PROFILE_TARGETING_DEFAULT", false)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_ADS_ALLOW_PROFILE_TARGETING", false)
         // Partner pins and coupons ("external POIs"), and the promotional splash screens Waze's
         // server can switch on at start (OFF, EVERY_COLD_START or DAILY).
-        keepWazeConfig("CONFIG_VALUE_EXTERNALPOI_MAX_POIS_DISPLAY", 0)
-        keepWazeConfig("CONFIG_VALUE_APP_LAUNCH_DYNAMIC_SPLASH_SCREEN_SHOW_FREQUENCY", "OFF")
+        keepWazeConfig("hideAds", "CONFIG_VALUE_EXTERNALPOI_MAX_POIS_DISPLAY", 0)
+        keepWazeConfig("hideAds", "CONFIG_VALUE_APP_LAUNCH_DYNAMIC_SPLASH_SCREEN_SHOW_FREQUENCY", "OFF")
     }
 }
 
@@ -68,7 +77,7 @@ val wazeNoGoogleAssistantPatch = bytecodePatch(
     dependsOn(wazeConfigOverridesPatch)
 
     execute {
-        keepWazeConfig("CONFIG_VALUE_GOOGLE_ASSISTANT_WAZE_FEATURE_ENABLED", false)
+        keepWazeConfig("noAssistant", "CONFIG_VALUE_GOOGLE_ASSISTANT_WAZE_FEATURE_ENABLED", false)
     }
 }
 
@@ -95,7 +104,7 @@ val wazeNoAiReportingPatch = bytecodePatch(
             "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_REPORT_BUTTON_FTE_HINT_ENABLED",
             "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_REPORT_MENU_FTE_HINT_ENABLED",
             "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_AGENT_FTE_HINT_ENABLED",
-        )) keepWazeConfig(name, false)
+        )) keepWazeConfig("noAiReporting", name, false)
     }
 }
 
@@ -117,14 +126,21 @@ val wazeAllMoodsPatch = bytecodePatch(
     dependsOn(wazeConfigOverridesPatch)
 
     execute {
-        keepWazeConfig("CONFIG_VALUE_MOODS_BETA_ENABLED", true)
-        CanSetMoodFingerprint.method.addInstructions(
-            0,
-            """
-                const/4 v0, 0x1
-                return v0
-            """,
-        )
+        keepWazeConfig("allMoods", "CONFIG_VALUE_MOODS_BETA_ENABLED", true)
+        // Every mood may be set while All moods is switched on; Waze's own check otherwise.
+        CanSetMoodFingerprint.method.apply {
+            addInstructionsWithLabels(
+                0,
+                """
+                    const-string v0, "allMoods"
+                    invoke-static { v0 }, $WAZE_CUSTOMIZATION->on(Ljava/lang/String;)Z
+                    move-result v0
+                    if-eqz v0, :waze_check
+                    return v0
+                """,
+                ExternalLabel("waze_check", implementation!!.instructions.first()),
+            )
+        }
     }
 }
 
@@ -139,7 +155,7 @@ val wazeReportSpeedLimitPatch = bytecodePatch(
     dependsOn(wazeConfigOverridesPatch)
 
     execute {
-        keepWazeConfig("CONFIG_VALUE_MAP_SPEEDOMETER_SPEED_LIMIT_OVERRIDE_ENABLED", true)
+        keepWazeConfig("reportSpeedLimit", "CONFIG_VALUE_MAP_SPEEDOMETER_SPEED_LIMIT_OVERRIDE_ENABLED", true)
     }
 }
 
@@ -154,8 +170,8 @@ val wazeSpeedCamerasEverywherePatch = bytecodePatch(
     dependsOn(wazeConfigOverridesPatch)
 
     execute {
-        keepWazeConfig("CONFIG_VALUE_ALERTS_ENABLE_ENFORCEMENT_ALERTS", true)
-        keepWazeConfig("CONFIG_VALUE_ALERTS_ENABLE_ENFORCEMENT_POLICE", "yes")
+        keepWazeConfig("camerasEverywhere", "CONFIG_VALUE_ALERTS_ENABLE_ENFORCEMENT_ALERTS", true)
+        keepWazeConfig("camerasEverywhere", "CONFIG_VALUE_ALERTS_ENABLE_ENFORCEMENT_POLICE", "yes")
     }
 }
 
@@ -168,7 +184,7 @@ val wazeCameraSoundAnySpeedPatch = bytecodePatch(
     dependsOn(wazeConfigOverridesPatch)
 
     execute {
-        keepWazeConfig("CONFIG_VALUE_ALERTS_PLAY_SPEED_CAMERA_SOUND_BELOW_SPEED_LIMIT", true)
+        keepWazeConfig("cameraSoundAnySpeed", "CONFIG_VALUE_ALERTS_PLAY_SPEED_CAMERA_SOUND_BELOW_SPEED_LIMIT", true)
     }
 }
 
@@ -193,15 +209,15 @@ val wazeAlertDistancesPatch = bytecodePatch(
     val between by intOption(key = "between", default = 200, title = "Least distance between two alerts", description = "Waze: 300 m.")
 
     execute {
-        police?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_POLICE_ALERT_DISTANCE_METERS", it) }
-        blockedLane?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_BLOCKED_LANE_ALERT_DISTANCE", it) }
-        between?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_DISTANCE_BETWEEN_ALERTS", it) }
-        hazard?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_HAZARD_ALERT_DISTANCE_METERS", it) }
-        accident?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_ACCIDENT_ALERT_DISTANCE_METERS", it) }
-        traffic?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_HEAVY_TRAFFIC_ALERT_DISTANCE_METERS", it) }
-        streets?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_ENFORCEMENT_ALERTS_DISTANCE_STREETS", it) }
-        highways?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_ENFORCEMENT_ALERTS_DISTANCE_HIGHWAY", it) }
-        freeways?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_ENFORCEMENT_ALERTS_DISTANCE_FREEWAY", it) }
+        police?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_POLICE_ALERT_DISTANCE_METERS", it) }
+        blockedLane?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_BLOCKED_LANE_ALERT_DISTANCE", it) }
+        between?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_DISTANCE_BETWEEN_ALERTS", it) }
+        hazard?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_HAZARD_ALERT_DISTANCE_METERS", it) }
+        accident?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_ACCIDENT_ALERT_DISTANCE_METERS", it) }
+        traffic?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_HEAVY_TRAFFIC_ALERT_DISTANCE_METERS", it) }
+        streets?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_ENFORCEMENT_ALERTS_DISTANCE_STREETS", it) }
+        highways?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_ENFORCEMENT_ALERTS_DISTANCE_HIGHWAY", it) }
+        freeways?.let { keepWazeConfig("alertDistances", "CONFIG_VALUE_ALERTS_ENFORCEMENT_ALERTS_DISTANCE_FREEWAY", it) }
     }
 }
 
@@ -224,7 +240,7 @@ val wazeSpeedLimitSignPatch = bytecodePatch(
     )
 
     execute {
-        keepWazeConfig("CONFIG_VALUE_MAP_SPEEDOMETER_STYLE", style!!)
+        keepWazeConfig("speedLimitSign", "CONFIG_VALUE_MAP_SPEEDOMETER_STYLE", style!!)
     }
 }
 
@@ -243,8 +259,8 @@ val wazeNavigationDistancesPatch = bytecodePatch(
     val trafficBar by intOption(key = "trafficBar", default = 180, title = "Traffic bar: time in traffic (s)", description = "Waze: 360 s.")
 
     execute {
-        headsUp?.let { keepWazeConfig("CONFIG_VALUE_ANDROID_AUTO_HEADS_UP_DISTANCE_NORMAL", it) }
-        headsUpFreeway?.let { keepWazeConfig("CONFIG_VALUE_ANDROID_AUTO_HEADS_UP_DISTANCE_FREEWAY", it) }
-        trafficBar?.let { keepWazeConfig("CONFIG_VALUE_TRAFFIC_BAR_MIN_TIME_IN_TRAFFIC_SECONDS", it) }
+        headsUp?.let { keepWazeConfig("navigationDistances", "CONFIG_VALUE_ANDROID_AUTO_HEADS_UP_DISTANCE_NORMAL", it) }
+        headsUpFreeway?.let { keepWazeConfig("navigationDistances", "CONFIG_VALUE_ANDROID_AUTO_HEADS_UP_DISTANCE_FREEWAY", it) }
+        trafficBar?.let { keepWazeConfig("navigationDistances", "CONFIG_VALUE_TRAFFIC_BAR_MIN_TIME_IN_TRAFFIC_SECONDS", it) }
     }
 }

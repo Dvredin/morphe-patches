@@ -60,12 +60,15 @@ private object PreferencesConfigSyncedFingerprint : Fingerprint(
 internal val wazeConfigOverridesPatch = bytecodePatch(
     description = "Keeps chosen Waze configuration values after every sync with Waze's server.",
 ) {
+    // Each kept value belongs to a feature with a switch on the Customization screen.
+    dependsOn(wazeCustomizationPatch)
+
     execute {
         val manager = mutableClassDefBy(CONFIG_MANAGER)
         manager.methods.add(
             ImmutableMethod(
                 CONFIG_MANAGER, OVERRIDES, emptyList(), "V",
-                AccessFlags.PUBLIC.value or AccessFlags.STATIC.value, null, null, MutableMethodImplementation(3),
+                AccessFlags.PUBLIC.value or AccessFlags.STATIC.value, null, null, MutableMethodImplementation(4),
             ).toMutable().apply {
                 addInstructions(
                     0,
@@ -126,15 +129,16 @@ private fun BytecodePatchContext.wazeConfig(name: String): WazeConfig {
 
 /**
  * Keeps Waze's configuration value [name] at [value] (a Boolean, Int or String, matching its kind),
- * re-applied after every sync with Waze's server. Needs [wazeConfigOverridesPatch].
+ * re-applied after every sync with Waze's server while [feature] is switched on in Customization.
+ * Needs [wazeConfigOverridesPatch].
  */
-internal fun BytecodePatchContext.keepWazeConfig(name: String, value: Any) {
+internal fun BytecodePatchContext.keepWazeConfig(feature: String, name: String, value: Any) {
     val config = wazeConfig(name)
-    val (load, setter) = when (value) {
-        is Boolean -> "const/4 v2, ${if (value) 1 else 0}" to "setConfigValueBoolNTV(IZ)V"
-        is Int -> "const v2, $value" to "setConfigValueIntNTV(II)V"
-        is String -> "const-string v2, \"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\"" to
-            "setConfigValueStringNTV(ILjava/lang/String;)V"
+    val (load, keeper) = when (value) {
+        is Boolean -> "const/4 v3, ${if (value) 1 else 0}" to "keepBool(Ljava/lang/String;Ljava/lang/String;IZ)V"
+        is Int -> "const v3, $value" to "keepInt(Ljava/lang/String;Ljava/lang/String;II)V"
+        is String -> "const-string v3, \"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\"" to
+            "keepString(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V"
         else -> throw PatchException("unsupported value for $name: $value")
     }
     // The kind of value each of ConfigManager's own Java setters takes: setConfigValueBool(<flag kind>, Z), ...
@@ -146,20 +150,18 @@ internal fun BytecodePatchContext.keepWazeConfig(name: String, value: Any) {
     val kind = classDefBy(CONFIG_MANAGER).methods.singleOrNull { it.name == javaSetter && it.parameterTypes.size == 2 }
         ?.parameterTypes?.first()?.toString() ?: throw PatchException("ConfigManager.$javaSetter not found")
     if (config.type != kind) throw PatchException("$name is a ${config.type}, not a $kind as $javaSetter takes")
-    // Unlocked, set, locked again: Waze's native config refuses a server update to a locked value
-    // ("config is locked. Staying with ..."), and the server's updates can arrive after this runs.
+    // The extension unlocks, sets and locks it again while the feature is on -- Waze's native config
+    // refuses a server update to a locked value ("config is locked. Staying with ...") -- and gives it
+    // back to Waze, unlocked at Waze's own default, while it is off.
     mutableClassDefBy(CONFIG_MANAGER).methods.single { it.name == OVERRIDES }.addInstructions(
         0,
         """
-            invoke-static { }, $CONFIG_MANAGER->getInstance()$CONFIG_MANAGER
-            move-result-object v0
-            const v1, ${config.id}
-            const/4 v2, 0x0
-            invoke-virtual { v0, v1, v2 }, $CONFIG_MANAGER->setConfigValueLockedNTV(IZ)V
+            const-string v0, "$feature"
+            const-string v1, "$name"
+            const v2, ${config.id}
             $load
-            invoke-virtual { v0, v1, v2 }, $CONFIG_MANAGER->$setter
-            const/4 v2, 0x1
-            invoke-virtual { v0, v1, v2 }, $CONFIG_MANAGER->setConfigValueLockedNTV(IZ)V
+            invoke-static { v0, v1, v2, v3 }, $WAZE_CUSTOMIZATION->$keeper
         """,
     )
+    declareWazeToggle(feature)
 }
