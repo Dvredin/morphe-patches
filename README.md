@@ -14,9 +14,9 @@ Select the app you want to patch inside Morphe Manager, follow all instructions 
 ## Patches
 
 <!-- PATCHES_START -->
-> **[v1.7.13](https://github.com/bearinmindcat/morphe-patches/releases/tag/v1.7.13)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;23 patches total
+> **[v2.0.0](https://github.com/bearinmindcat/morphe-patches/releases/tag/v2.0.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;34 patches total
 <details>
-<summary><img src="docs/icons/pin-google.png" width="20" height="20" align="top"> Google Maps&nbsp;&nbsp;-&gt;&nbsp;&nbsp;<img src="docs/icons/pin-ungoogled.png" width="20" height="20" align="top"> Ungoogled Maps&nbsp;&nbsp;•&nbsp;&nbsp;23 patches</summary>
+<summary><img src="docs/icons/pin-google.png" width="20" height="20" align="top"> Google Maps&nbsp;&nbsp;-&gt;&nbsp;&nbsp;<img src="docs/icons/pin-ungoogled.png" width="20" height="20" align="top"> Ungoogled Maps&nbsp;&nbsp;•&nbsp;&nbsp;25 patches</summary>
 <br>
 
 <p>
@@ -52,8 +52,30 @@ Select the app you want to patch inside Morphe Manager, follow all instructions 
 | [Remove permissions](#remove-permissions) | Removes permissions that only serve Google-account features or Google's data collection: background location, physical activity, contacts, microphone (voice search stops working), camera (Lens and Live View stop working), car speed, advertising ID, push messages and Google services settings. Left out with Add microG support, whose account features need them. |  |
 | [Remove sign-in prompts](#remove-sign-in-prompts) | Removes Google's sign-in prompts: the first-launch "Make it your map" page, the search screen's "Tired of typing?" card and the account sheet's "Sign in" pill. Tapping "Your profile" (or the pill, where it still shows) answers with a "Can't sign in" toast instead of nothing. Left out with Add microG support, which signs in. |  |
 | [Remove telemetry](#remove-telemetry) | Points the Firebase Installations and Play services compliance check-ins at an unresolvable host, stops every ad impression and click ping from being sent, and deregisters Google's logging, performance-monitoring, survey and Location History libraries and the on-device federated-learning services. With Add microG support, Firebase Installations and Location History are left alone, so Timeline, account sync and push messages keep working. |  |
+| [Speed cameras](#speed-cameras) | Chimes and shows a note when a speed or red light camera is coming up ahead, and puts the cameras on the map, from OpenStreetMap. Off until turned on in Waze Features, a row on the account sheet, because it downloads the cameras near you from an OpenStreetMap server. |  |
+| [Speeding chime](#speeding-chime) | Plays a chime when your speed passes the speed limit during navigation, as Waze does. Maps itself only turns its speedometer red. When it chimes is chosen in Waze Features, a row on the account sheet. |  |
 | [Trim account menu](#trim-account-menu) | Removes Your Timeline, Location sharing, Your data in Maps and Help & feedback from the account sheet. Left out with Add microG support, whose account features need them. |  |
 | [Zoom controls in navigation](#zoom-controls-in-navigation) | Adds +, − and reset tiles during turn-by-turn that change the navigation zoom while the camera keeps following the car. |  |
+
+</details>
+
+<details>
+<summary><img src="docs/icons/waze.png" width="20" height="20" align="top"> Waze&nbsp;&nbsp;-&gt;&nbsp;&nbsp;<img src="docs/icons/waze.png" width="20" height="20" align="top"> Waze&nbsp;&nbsp;•&nbsp;&nbsp;9 patches</summary>
+<br>
+
+**Supported version(s):** 5.24.5.0
+
+| Patch | Description | Options |
+|----------|----------------|-----------|
+| [Alert distances](#alert-distances) | How far ahead, in metres, Waze warns of police, hazards, crashes, traffic jams and speed cameras. The defaults are the old Waze mods' (CGE); Waze's own are lower for most of them. | • Police<br>• Hazards<br>• Crashes<br>• Traffic jams<br>• Speed cameras on streets<br>• Speed cameras on highways<br>• Speed cameras on freeways |
+| [Bigger speedometer](#bigger-speedometer) | Bigger digits on the speedometer, and on the speed limit sign beside it, so they can be read at a glance. | • Speed digits (dp)<br>• Unit label (dp)<br>• Speed limit sign digits (sp)<br>• Speed limit sign digits, 100 and over (sp) |
+| [Full black](#full-black) | Waze's dark mode in true black for AMOLED screens: the night map's background and the app's dark backgrounds are black. Roads, labels, buttons and text keep their colours. |  |
+| [Hide ads](#hide-ads) | Removes the sponsored pins on the map and on Android Auto, the full-screen ads shown while you are stopped, and the ad statistics Waze sends. |  |
+| [Map skin](#map-skin) | The old Waze mods' map skin, as changes to Waze's own: bigger map labels, a wider navigation arrow head and a warm day background. The night background is Full black's. | • Map labels: huge<br>• Map labels: big<br>• Map labels: medium<br>• Map labels: small<br>• Navigation arrow head width<br>• Day map background (hex) |
+| [Navigation distances](#navigation-distances) | How far ahead Android Auto gives its heads-up, and how long a jam must last before the traffic bar shows it. The defaults are the old Waze mods' (Chuppito). | • Android Auto heads-up, normal roads (m)<br>• Android Auto heads-up, freeways (m)<br>• Traffic bar: time in traffic (s) |
+| [Speed camera sound at any speed](#speed-camera-sound-at-any-speed) | Plays the speed camera sound for every camera, not only when you are over the speed limit. |  |
+| [Speed cameras everywhere](#speed-cameras-everywhere) | Turns speed camera and police alerts back on in the countries where Waze's server switches them off. Warning of speed cameras is against the law in some of those countries. |  |
+| [Speed limit sign](#speed-limit-sign) | The style of the speed limit sign beside the speedometer, whatever the country. | • Sign style |
 
 </details>
 

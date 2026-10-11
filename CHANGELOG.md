@@ -1,3 +1,14 @@
+## [2.0.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.13...v2.0.0) (2026-10-11)
+
+### ⚠ BREAKING CHANGES
+
+* the Customization screen is reorganised into sections, each with its own page, and the account sheet gains a Waze Features row; together with the new Waze patches the bundle is no longer a Google Maps-only source.
+
+### ✨ New Features
+
+* add waze patches for waze apk ([0b091ad](https://github.com/bearinmindcat/morphe-patches/commit/0b091adbf5fb89659285b30b41599e97fd8f90e9))
+* added waze features to google maps ([880da80](https://github.com/bearinmindcat/morphe-patches/commit/880da80a2ebed18e01e6d229b66f14cc8b763e71))
+
 ## [1.7.13](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.12...v1.7.13) (2026-10-09)
 
 ### 🐛 Bug Fixes
