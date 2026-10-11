@@ -59,6 +59,14 @@ Select the app you want to patch inside Morphe Manager, follow all instructions 
 
 <!-- PATCHES_END -->
 
+## Waze
+
+The same bundle patches Waze (5.24.5.0): **Full black** (a true-black night map and dark screens for AMOLED), **Hide ads** (sponsored pins on the map and on Android Auto, the full-screen ads while you are stopped, Waze's own ad requests), **Bigger speedometer**, **Map skin** (bigger map labels, a wider navigation arrow, a warm day background) and the alert settings Waze's server normally decides for you: **Speed cameras everywhere**, **Speed camera sound at any speed**, **Alert distances**, **Speed limit sign** and **Navigation distances**. These are set and locked in Waze's own configuration, so a sync with Waze's server cannot put its values back. The patches that are against the law in some countries are off by default; switch them on in Morphe Manager.
+
+**Install the patched Waze as a root (mount) install.** Waze checks the app's signature through Google's Play Integrity when you create an account or log in. A patched Waze installed the normal way is re-signed, so that check fails and it cannot sign in. A mount install keeps Waze's own signature and your session.
+
+Ungoogled Maps gets the two things people keep Waze for: a **speeding chime** and **speed and red light camera alerts** from OpenStreetMap, with the cameras as pins on the map. Both live under **Waze Features** on the account sheet.
+
 ## Building
 
 To build bearinmind patches, follow the [Morphe documentation](https://github.com/MorpheApp/morphe-documentation).
