@@ -1,6 +1,7 @@
 package org.ungoogled.patches.waze
 
 import app.morphe.patcher.patch.PatchException
+import app.morphe.patcher.patch.booleanOption
 import app.morphe.patcher.patch.resourcePatch
 import org.ungoogled.patches.waze.WazeConstants.COMPATIBILITY_WAZE
 
@@ -23,14 +24,22 @@ private fun darkNeutral(argb: Long): Boolean {
 @Suppress("unused")
 val wazeFullBlackPatch = resourcePatch(
     name = "Full black",
-    description = "Waze's dark mode in true black for AMOLED screens: the night map's background and the app's " +
-        "dark backgrounds are black. Roads, labels, buttons and text keep their colours.",
+    description = "Waze's dark mode in true black for AMOLED screens: the app's dark backgrounds are black, and " +
+        "with Black night map the night map's background too. Roads, labels, buttons and text keep their colours.",
 ) {
     compatibleWith(COMPATIBILITY_WAZE)
 
+    // The night map lives in Waze's assets; see MANAGER_ASSET_WARNING for why it is off by default.
+    val blackMap by booleanOption(
+        key = "blackMap",
+        default = false,
+        title = "Black night map",
+        description = "The night map's background black as well. $MANAGER_ASSET_WARNING",
+    )
+
     execute {
         // 1. The night map: its background, and the areas not loaded yet.
-        for (path in NIGHT_SKINS) {
+        if (blackMap == true) for (path in NIGHT_SKINS) {
             val skin = get(path)
             if (!skin.isFile) throw PatchException("$path not found")
             val before = skin.readText()

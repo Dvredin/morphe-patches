@@ -29,11 +29,23 @@ private fun hexColour(value: String?, what: String): String {
     return hex.uppercase(Locale.ROOT)
 }
 
+/**
+ * Why Map skin, and Full black's black night map, are off by default: they change files under
+ * `assets/res/`, and Morphe Manager 1.35 (patcher 1.15) then also writes empty folder entries into
+ * the APK for every parent folder of a changed asset. Waze 5.24's native map engine treats the
+ * `assets/res/` folder entry as a file and crashes about a second after the map appears, on every
+ * launch. Morphe Desktop (patcher 1.14) writes no folder entries, so its builds run.
+ */
+internal const val MANAGER_ASSET_WARNING =
+    "Morphe Manager 1.35 builds with this crash Waze when the map opens; patch with Morphe Desktop."
+
 @Suppress("unused")
 val wazeMapSkinPatch = resourcePatch(
     name = "Map skin",
     description = "The old Waze mods' map skin, as changes to Waze's own: bigger map labels, a wider " +
-        "navigation arrow head and a warm day background. The night background is Full black's.",
+        "navigation arrow head and a warm day background. The night background is Full black's. " +
+        MANAGER_ASSET_WARNING,
+    default = false,
 ) {
     compatibleWith(COMPATIBILITY_WAZE)
 
