@@ -1,3 +1,9 @@
+## [2.2.3](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.2...v2.2.3) (2026-10-11)
+
+### 🐛 Bug Fixes
+
+* customization menu in waze (switch the waze patches on and off from the side menu) ([456c27c](https://github.com/bearinmindcat/morphe-patches/commit/456c27c7e4829cdcb60d8a398860b668fce6d4d3))
+
 ## [2.2.2](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.1...v2.2.2) (2026-10-11)
 
 ### 🐛 Bug Fixes
