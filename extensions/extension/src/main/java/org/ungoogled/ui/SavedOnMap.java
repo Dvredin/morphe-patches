@@ -43,6 +43,13 @@ public final class SavedOnMap {
                 ours.addAll(mine);
             }
             out.addAll(mine);
+            if (Shapes.speedCamerasPatched()) {
+                List<Object> cameras = SpeedCameras.mapItems();
+                synchronized (ours) {
+                    ours.addAll(cameras);
+                }
+                out.addAll(cameras);
+            }
             return immutable(out);
         } catch (Throwable t) {
             android.util.Log.w("UA", "saved places on the map", t);
@@ -76,8 +83,11 @@ public final class SavedOnMap {
     /** Rewritten by the patch: Maps' own immutable list of [places]. */
     static Object immutable(List<Object> places) { return places; }
 
-    /** Rewritten by the patch: Maps' description of the list [id] -- [type] is its kind's name (FAVORITES, CUSTOM, ...). */
-    static Object listInfo(String id, String type, String name) { return null; }
+    /**
+     * Rewritten by the patch: Maps' description of the list [id] -- [type] is its kind's name (FAVORITES,
+     * CUSTOM, ...); a CUSTOM list with an [emoji] is drawn with it.
+     */
+    static Object listInfo(String id, String type, String name, String emoji) { return null; }
 
     /**
      * Rewritten by the patch: one of Maps' personal places at [lat],[lng] with feature id [high]:[low]
@@ -139,7 +149,7 @@ public final class SavedOnMap {
             low = Long.parseUnsignedLong(p.ftid.substring(colon + 3), 16);
         }
         String name = title != null && !title.isEmpty() ? title : p.name != null ? p.name : "";
-        Object list = listType == null ? null : listInfo("ungoogled:" + listId, listType, listName != null ? listName : "");
+        Object list = listType == null ? null : listInfo("ungoogled:" + listId, listType, listName != null ? listName : "", null);
         Object item = item(high, low, p.lat, p.lng, name, name, alias, list, starred);
         if (item != null) out.add(item);
     }

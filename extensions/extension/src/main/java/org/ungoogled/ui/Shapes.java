@@ -85,6 +85,8 @@ public final class Shapes {
     public static boolean hideAiPatched() { return false; }
     public static boolean highRefreshPatched() { return false; }
     public static boolean timelinePatched() { return false; }
+    public static boolean speedingChimePatched() { return false; }
+    public static boolean speedCamerasPatched() { return false; }
     /** Add microG support: microG Maps, which signs in through microG. */
     public static boolean microgPatched() { return false; }
 
@@ -112,6 +114,8 @@ public final class Shapes {
     /** Off by default, unlike the others: it costs battery. */
     public static volatile boolean HIGH_REFRESH = false;
     public static volatile boolean BETTER_OFFLINE = betterOfflinePatched();
+    /** When the speeding chime sounds, one of SpeedAlerts' choices. */
+    public static volatile int SPEEDING_CHIME = speedingChimePatched() ? SpeedAlerts.RED : SpeedAlerts.OFF;
 
     /** Set right before an account-sheet row opens something of ours, so the sheet's tap
      *  dispatcher returns NO_DISMISS once instead of closing the sheet behind it. */
@@ -248,6 +252,21 @@ public final class Shapes {
     public static void setHideAiEnabled(Context c, boolean on) {
         prefs(c).edit().putBoolean(KEY_HIDE_AI, on).commit();
         HIDE_AI = on && hideAiPatched();
+    }
+
+    // ---- Speeding chime ----------------------------------------------------------
+    // SpeedAlerts does the work. Read on every speedometer change, so a change
+    // needs no restart.
+
+    public static final String KEY_SPEEDING_CHIME = "speeding_chime";
+
+    public static int speedingChime(Context c) {
+        return speedingChimePatched() ? prefs(c).getInt(KEY_SPEEDING_CHIME, SpeedAlerts.RED) : SpeedAlerts.OFF;
+    }
+
+    public static void setSpeedingChime(Context c, int mode) {
+        prefs(c).edit().putInt(KEY_SPEEDING_CHIME, mode).commit();
+        SPEEDING_CHIME = speedingChimePatched() ? mode : SpeedAlerts.OFF;
     }
 
     // ---- 120 refresh rate ------------------------------------------------------
@@ -632,6 +651,8 @@ public final class Shapes {
             HIDE_TABS = hideTabsEnabled(base);
             HIDE_DIRECTORY = hideDirectoryEnabled(base);
             HIDE_AI = hideAiEnabled(base);
+            SPEEDING_CHIME = speedingChime(base);
+            if (speedCamerasPatched()) SpeedCameras.refresh(base);
             HIGH_REFRESH = highRefreshEnabled(base);
             PowerSaving.refresh(base);
             if (microgPatched()) MicroG.track(base);
@@ -827,6 +848,7 @@ public final class Shapes {
     public static void navCam(Object controller) {
         if (controller == null) return;
         navCamAt = android.os.SystemClock.uptimeMillis();
+        if (speedCamerasPatched()) SpeedCameras.navigating(true);
         if (controller != NAV_CAM) {
             NAV_CAM = controller;
             if (NAV_TRACE) android.util.Log.w("UA", "NAVCAM controller published: " + controller.getClass().getName());
@@ -977,6 +999,7 @@ public final class Shapes {
      *  up to three seconds after the rest of the drive chrome had gone. */
     public static void navEnded() {
         navCamAt = 0L;
+        if (speedCamerasPatched()) SpeedCameras.navigating(false);
         try {
             if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) detachTiles();
             else new android.os.Handler(android.os.Looper.getMainLooper()).post(new Detach());

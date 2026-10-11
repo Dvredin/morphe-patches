@@ -28,10 +28,21 @@ public final class CustomizationActivity extends Activity {
     // neutral6 surface (#131314) / neutral90 text; Black theme = pure black surface.
     private static final int BG = 0xFFFFFFFF, TEXT = 0xFF1B1B1F, SUMMARY = 0xFF5F6368;
     private static final int BG_D = 0xFF131314, TEXT_D = 0xFFE3E3E3, SUMMARY_D = 0xFFC4C7C5;
-    /** Which page: the main list, or Power Saving Options (this same screen, opened from its own account sheet row). */
+    /**
+     * Which page of this same screen: the main list; one of its sections (UI, Hide Telemetry,
+     * Misc Features); or a page with its own account sheet row (Power Saving Options, Waze Features).
+     */
     static final String EXTRA_PAGE = "org.ungoogled.ui.page";
-    static final String PAGE_POWER = "power";
-    private static final String POWER_TITLE = "Power Saving Options";
+    static final String PAGE_POWER = "power", PAGE_WAZE = "waze", PAGE_UI = "ui", PAGE_HIDE = "hide", PAGE_MISC = "misc";
+
+    private static String title(String page) {
+        if (PAGE_POWER.equals(page)) return "Power Saving Options";
+        if (PAGE_WAZE.equals(page)) return "Waze Features";
+        if (PAGE_UI.equals(page)) return "UI";
+        if (PAGE_HIDE.equals(page)) return "Hide Telemetry";
+        if (PAGE_MISC.equals(page)) return "Misc Features";
+        return "Customization";
+    }
     private boolean dark, black;
     private TextView proxySub;
 
@@ -63,8 +74,8 @@ public final class CustomizationActivity extends Activity {
         String darkMode = getSharedPreferences("settings_preference", MODE_PRIVATE).getString("dark_mode", "FOLLOW_SYSTEM");
         boolean systemNight = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         dark = black || "ON".equals(darkMode) || (!"OFF".equals(darkMode) && systemNight);
-        boolean powerPage = PAGE_POWER.equals(getIntent().getStringExtra(EXTRA_PAGE));
-        String pageTitle = powerPage ? POWER_TITLE : "Customization";
+        String page = getIntent().getStringExtra(EXTRA_PAGE);
+        String pageTitle = title(page);
         setTitle(pageTitle);
         if (getActionBar() != null) getActionBar().hide();
         getWindow().getDecorView().setBackgroundColor(bg());
@@ -102,7 +113,11 @@ public final class CustomizationActivity extends Activity {
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(0, dp(4), 0, dp(24));
 
-        if (powerPage) buildPowerPage(body);
+        if (PAGE_POWER.equals(page)) buildPowerPage(body);
+        else if (PAGE_WAZE.equals(page)) buildWazePage(body);
+        else if (PAGE_UI.equals(page)) buildUiPage(body);
+        else if (PAGE_HIDE.equals(page)) buildHidePage(body);
+        else if (PAGE_MISC.equals(page)) buildMiscPage(body);
         else buildMainPage(body);
 
         ScrollView sv = new ScrollView(this);
@@ -111,7 +126,44 @@ public final class CustomizationActivity extends Activity {
         setContentView(root);
     }
 
+    /** The main list: one row a section, each opening its own page, shown when any of its patches is present. */
     private void buildMainPage(LinearLayout body) {
+        section(body, PAGE_UI, names(
+                Shapes.rectShapesPatched(), "Rectangle Shapes",
+                Shapes.blackThemePatched(), "Black theme",
+                Shapes.highRefreshPatched(), "120 refresh rate"));
+        section(body, PAGE_HIDE, names(
+                Shapes.hideAdsPatched(), "Sponsored content",
+                Shapes.hideExplorePatched(), "Explore sheet",
+                Shapes.hideTabsPatched(), "Bottom tabs",
+                Shapes.hideDirectoryPatched(), "Suggestions",
+                Shapes.hideAiPatched(), "AI"));
+        section(body, PAGE_MISC, names(
+                Shapes.navZoomPatched(), "Zoom controls in navigation",
+                Shapes.betterOfflinePatched(), "Better offline maps",
+                Shapes.locationSourcePatched(), "Location source",
+                Shapes.proxyPatched(), "Proxy"));
+    }
+
+    /** A section's row: its title, what it holds, and its page when tapped. Left out when it holds nothing. */
+    private void section(LinearLayout body, String page, String holds) {
+        if (holds == null) return;
+        LinearLayout r = rowBase(title(page), holds);
+        r.setOnClickListener(v -> startActivity(Screens.intent(this, CustomizationActivity.class).putExtra(EXTRA_PAGE, page)));
+        body.addView(r);
+    }
+
+    /** "A, B & C" of the names whose patch is present, from (present, name) pairs; null when none is. */
+    private static String names(Object... pairs) {
+        java.util.List<String> present = new java.util.ArrayList<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) if ((Boolean) pairs[i]) present.add((String) pairs[i + 1]);
+        if (present.isEmpty()) return null;
+        if (present.size() == 1) return present.get(0);
+        return String.join(", ", present.subList(0, present.size() - 1)) + " & " + present.get(present.size() - 1);
+    }
+
+    /** UI: how Maps looks. */
+    private void buildUiPage(LinearLayout body) {
         if (Shapes.rectShapesPatched()) {
             Switch rect = new Switch(this);
             rect.setChecked(Shapes.enabled(this));
@@ -132,16 +184,6 @@ public final class CustomizationActivity extends Activity {
             });
         }
 
-        if (Shapes.navZoomPatched()) {
-            Switch navz = new Switch(this);
-            navz.setChecked(Shapes.navZoomEnabled(this));
-            body.addView(toggleRow("Zoom controls in navigation", null, navz));
-            navz.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
-                Shapes.setNavZoomEnabled(this, on);
-                // no restart: the navigation ticker adds and removes the tiles live
-            });
-        }
-
         if (Shapes.highRefreshPatched()) {
             Switch hz = new Switch(this);
             hz.setChecked(Shapes.highRefreshEnabled(this));
@@ -152,7 +194,10 @@ public final class CustomizationActivity extends Activity {
                 restartSoon(b);
             });
         }
+    }
 
+    /** Hide Telemetry: what Maps shows that it should not. */
+    private void buildHidePage(LinearLayout body) {
         if (Shapes.hideAdsPatched()) {
             Switch ads = new Switch(this);
             ads.setChecked(Shapes.hideAdsEnabled(this));
@@ -198,6 +243,19 @@ public final class CustomizationActivity extends Activity {
             // read each time a place sheet opens, so no restart
             ai.setOnCheckedChangeListener((CompoundButton b, boolean on) -> Shapes.setHideAiEnabled(this, on));
         }
+    }
+
+    /** Misc Features. */
+    private void buildMiscPage(LinearLayout body) {
+        if (Shapes.navZoomPatched()) {
+            Switch navz = new Switch(this);
+            navz.setChecked(Shapes.navZoomEnabled(this));
+            body.addView(toggleRow("Zoom controls in navigation", null, navz));
+            navz.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
+                Shapes.setNavZoomEnabled(this, on);
+                // no restart: the navigation ticker adds and removes the tiles live
+            });
+        }
 
         if (Shapes.betterOfflinePatched()) {
             Switch offline = new Switch(this);
@@ -241,6 +299,38 @@ public final class CustomizationActivity extends Activity {
         }
     }
 
+    /** Waze Features, opened from its own account sheet row: the speeding chime and speed cameras. */
+    private void buildWazePage(LinearLayout body) {
+        if (Shapes.speedingChimePatched()) {
+            LinearLayout chimeRow = rowBase("Speeding chime", CHIME_LABELS[Shapes.speedingChime(this)]);
+            TextView chimeSub = (TextView) ((LinearLayout) chimeRow.getChildAt(0)).getChildAt(1);
+            chimeRow.setOnClickListener(v -> choose("Speeding chime", CHIME_LABELS, Shapes.speedingChime(this), which -> {
+                // read on every speedometer change, so no restart
+                Shapes.setSpeedingChime(this, which);
+                chimeSub.setText(CHIME_LABELS[which]);
+            }));
+            body.addView(chimeRow);
+        }
+
+        if (Shapes.speedCamerasPatched()) {
+            Switch cams = new Switch(this);
+            cams.setChecked(SpeedCameras.enabled(this));
+            body.addView(toggleRow("Speed cameras", "Alerts for cameras ahead. Downloads the cameras near you from OpenStreetMap", cams));
+            Switch camsMap = new Switch(this);
+            camsMap.setChecked(SpeedCameras.onMap(this));
+            camsMap.setEnabled(cams.isChecked());
+            body.addView(toggleRow("Speed cameras on the map", null, camsMap));
+            // both read live, so no restart
+            cams.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
+                SpeedCameras.setEnabled(this, on);
+                camsMap.setEnabled(on);
+            });
+            camsMap.setOnCheckedChangeListener((CompoundButton b, boolean on) -> SpeedCameras.setOnMap(this, on));
+        }
+    }
+
+    /** SpeedAlerts' choices, in order. */
+    private static final String[] CHIME_LABELS = {"Off", "Past the speed limit", "When the speedometer turns red", "10 mph or 20 km/h over the limit"};
     private static final String[] IDLE_LABELS = {"Off", "After 15 seconds", "After 30 seconds", "After 1 minute", "After 2 minutes"};
     private static final String[] LOW_FPS_LABELS = {"Off", "While navigating", "Everywhere"};
 
@@ -428,6 +518,19 @@ public final class CustomizationActivity extends Activity {
         public void onClick(View v) {
             Shapes.SKIP_DISMISS = true;
             context.startActivity(Screens.intent(context, CustomizationActivity.class).putExtra(EXTRA_PAGE, PAGE_POWER));
+        }
+    }
+
+    /** The Waze Features row on the account sheet: this screen's Waze page, the sheet left open behind it. */
+    public static final class OpenWaze implements View.OnClickListener {
+        private final android.content.Context context;
+
+        public OpenWaze(android.content.Context context) { this.context = context; }
+
+        @Override
+        public void onClick(View v) {
+            Shapes.SKIP_DISMISS = true;
+            context.startActivity(Screens.intent(context, CustomizationActivity.class).putExtra(EXTRA_PAGE, PAGE_WAZE));
         }
     }
 

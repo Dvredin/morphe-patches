@@ -999,8 +999,9 @@ private fun BytecodePatchContext.savedOnMap(featureType: String, positionType: S
             return-object p0
         """,
     )
+    // (id, kind's name, title, emoji): a CUSTOM list with an emoji is drawn with it (Speed cameras' pins).
     replace(
-        "listInfo", listOf(string, string, string), "Ljava/lang/Object;", 21,
+        "listInfo", listOf(string, string, string, string), "Ljava/lang/Object;", 22,
         """
             move-object/from16 v1, p1
             const-class v2, ${info.kind}
@@ -1020,7 +1021,7 @@ private fun BytecodePatchContext.savedOnMap(featureType: String, positionType: S
             const/4 v12, 0x0
             const/4 v13, 0x0
             const/4 v14, 0x0
-            const/4 v15, 0x0
+            move-object/from16 v15, p3
             const/16 v16, 0x0
             invoke-static { }, $IMMUTABLE_LIST->of()$IMMUTABLE_LIST
             move-result-object v17
