@@ -1,3 +1,9 @@
+## [2.1.0](https://github.com/bearinmindcat/morphe-patches/compare/v2.0.0...v2.1.0) (2026-10-11)
+
+### ✨ New Features
+
+* added more misc waze features (for telemetry) & other misc items ([d56e9fe](https://github.com/bearinmindcat/morphe-patches/commit/d56e9fefd2d9d7e8c2e60cfec3b4ca512745df00))
+
 ## [2.0.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.13...v2.0.0) (2026-10-11)
 
 ### ⚠ BREAKING CHANGES
