@@ -49,6 +49,10 @@ APP_RENAMES = {
         '<img src="docs/icons/pin-google.png" width="20" height="20" align="top"> Google Maps',
         '<img src="docs/icons/pin-ungoogled.png" width="20" height="20" align="top"> Ungoogled Maps',
     ),
+    "com.waze": (
+        '<img src="docs/icons/waze.png" width="20" height="20" align="top"> Waze',
+        '<img src="docs/icons/waze.png" width="20" height="20" align="top"> Waze',
+    ),
 }
 
 
