@@ -377,6 +377,16 @@ public final class Shapes {
         return !SOURCE_ANDROID.equals(sourceInUse());
     }
 
+    /**
+     * Called from Maps' choice of heading source (issue #41): Play services' fused orientation only while
+     * the location source is Google's Play services; Maps' own fusion of the phone's sensors otherwise.
+     * With Android its requests went to the package that does not exist, so the blue dot never showed a
+     * heading and the compass calibration prompt never cleared.
+     */
+    public static boolean playOrientation() {
+        return SOURCE_GOOGLE.equals(sourceInUse());
+    }
+
     private static boolean locationService(String action) {
         return GOOGLE_LOCATION_SERVICE.equals(action) || MicroG.RENAMED_LOCATION_ACTION.equals(action);
     }

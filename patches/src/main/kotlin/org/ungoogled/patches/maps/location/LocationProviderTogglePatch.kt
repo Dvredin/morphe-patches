@@ -1,10 +1,12 @@
 package org.ungoogled.patches.maps.location
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.booleanOption
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.patch.resourcePatch
+import app.morphe.patcher.util.smali.ExternalLabel
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
 import org.ungoogled.patches.maps.microg.microgLocationDialogPatch
 import org.ungoogled.patches.maps.ui.SHAPES
@@ -100,6 +102,26 @@ val locationProviderTogglePatch = bytecodePatch(
                     invoke-static { v$pkg, v$action }, $SHAPES->locationPackage(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
                     move-result-object v$pkg
                 """,
+            )
+        }
+
+        // 3. The heading (issue #41): Play services' fused orientation only while the source is Google's
+        //    Play services. Its requests go through the same location service as the location, so with
+        //    Android they went nowhere -- no beam on the blue dot, a calibration prompt that never cleared --
+        //    and with microg Services they depended on microG's accuracy reports. Otherwise Maps uses its own
+        //    fusion of the phone's sensors, as it does on a phone without Play services. v0 is a local.
+        FusedOrientationCheckFingerprint.method.apply {
+            val impl = implementation!!
+            if (impl.registerCount - 1 < 1) throw PatchException("heading source check has no free local register")
+            addInstructionsWithLabels(
+                0,
+                """
+                    invoke-static { }, $SHAPES->playOrientation()Z
+                    move-result v0
+                    if-nez v0, :stock_check
+                    return v0
+                """,
+                ExternalLabel("stock_check", impl.instructions.first()),
             )
         }
     }
