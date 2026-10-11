@@ -1,3 +1,9 @@
+## [2.2.4](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.3...v2.2.4) (2026-10-11)
+
+### 🐛 Bug Fixes
+
+* compass heading and calibration without Google Play services location; issue [#41](https://github.com/bearinmindcat/morphe-patches/issues/41) ([885b566](https://github.com/bearinmindcat/morphe-patches/commit/885b5669494390017563fec6985df9764a37b3d7))
+
 ## [2.2.3](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.2...v2.2.3) (2026-10-11)
 
 ### 🐛 Bug Fixes
