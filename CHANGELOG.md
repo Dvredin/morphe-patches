@@ -1,3 +1,9 @@
+## [2.2.0](https://github.com/bearinmindcat/morphe-patches/compare/v2.1.0...v2.2.0) (2026-10-11)
+
+### ✨ New Features
+
+* adding alltrails patches ([8acb753](https://github.com/bearinmindcat/morphe-patches/commit/8acb75369f6d9bd5238609bcf58ea24d3c18240a))
+
 ## [2.1.0](https://github.com/bearinmindcat/morphe-patches/compare/v2.0.0...v2.1.0) (2026-10-11)
 
 ### ✨ New Features

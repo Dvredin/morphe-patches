@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "patches": [
     {
       "name": "120 refresh rate",
@@ -23,6 +23,36 @@
           "targets": [
             {
               "version": "26.36.04.973607363",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "2D / 3D compass",
+      "description": "Adds a 2D / 3D compass switch to the Experimental screen. With it on, tapping the compass in navigate mode switches the map between the tilted 3D view and a flat, north-up 2D map the way Google Maps' does, from any state (following you, panned away, paused), and brings the map back to you. The compass shows a single north arrow in 2D, and the next navigation starts in the mode you used last.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch",
+        "ResourcePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -266,6 +296,35 @@
       "options": []
     },
     {
+      "name": "Better filters",
+      "description": "Adds a Better filters switch to the Experimental screen. With it on, the trail filter's sliders move in finer steps over the same ranges: Rating in 0.1 stars (instead of Any, 3.5, 4 and 4.5), Length in 0.1 mi, Elevation gain in 10 ft, Highest point in 100 ft and Distance away in 1 mi (metric: 0.1 km, 5 m, 50 m, 1 km).",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
       "name": "Better offline maps",
       "description": "Reworks the offline area picker: zooming out really selects more instead of being shrunk to Google's size cap, the box can be resized by dragging its edges and corners, a large area is split into several downloads whose true total size is shown, and areas already downloaded are drawn on the map. Can be turned off on the Customization screen.",
       "default": true,
@@ -285,6 +344,35 @@
           "targets": [
             {
               "version": "26.36.04.973607363",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Better tracking",
+      "description": "Adds a Better tracking switch to the Experimental screen. With it on, recordings work the way Gaia GPS records: the phone's GPS directly with every fix delivered live (no Play services batching), fixes worse than 65 m or physically impossible dropped, points kept 3 m apart, no trail-biased smoothing, and elevation converted to sea level and counted in 2 m steps.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -360,6 +448,33 @@
           "values": null
         }
       ]
+    },
+    {
+      "name": "Black icon",
+      "description": "Uses a white AllTrails logo on black for the launcher icon and the splash screen, instead of green on dark green, so this build is easy to tell apart from the stock app.",
+      "default": true,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
     },
     {
       "name": "Black theme",
@@ -488,6 +603,45 @@
     },
     {
       "name": "Change package name",
+      "description": "Installs alongside stock AllTrails under its own package name.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "ResourcePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "key": "packageName",
+          "title": "Package name",
+          "description": "The package name to install under. Must be a valid Android package name.",
+          "required": true,
+          "type": "kotlin.String",
+          "default": "org.ungoogled.alltrails",
+          "values": null
+        }
+      ]
+    },
+    {
+      "name": "Change package name",
       "description": "Installs alongside stock Google Maps under its own package name. On by default, because stock Maps comes built into most phones and cannot be replaced by a patched copy.",
       "default": true,
       "category": null,
@@ -547,6 +701,35 @@
           "targets": [
             {
               "version": "26.36.04.973607363",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Experimental screen",
+      "description": "Adds an Experimental row to your profile's menu, under Edit profile and Share profile, that opens an Experimental screen.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "ResourcePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -1044,6 +1227,35 @@
       "options": []
     },
     {
+      "name": "Remember filters",
+      "description": "Adds a Remember filter states switch to the Experimental screen. With it on, the trail filters you set (length, elevation, rating, difficulty, activities, features and the rest, but not Distance away) stay set when you go back to the home screen and after the app restarts, instead of resetting.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
       "name": "Remove permissions",
       "description": "Removes permissions that only serve Google-account features or Google's data collection: background location, physical activity, contacts, microphone (voice search stops working), camera (Lens and Live View stop working), car speed, advertising ID, push messages and Google services settings. Left out with Add microG support, whose account features need them.",
       "default": true,
@@ -1314,6 +1526,36 @@
           "targets": [
             {
               "version": "26.36.04.973607363",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Theme",
+      "description": "Adds a Theme choice to the Experimental screen: Follow phone, Light, Dark or AMOLED black (dark with pure black backgrounds). AllTrails itself only follows the phone.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch",
+        "ResourcePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.alltrails.alltrails",
+          "name": "AllTrails",
+          "description": null,
+          "apkFileType": "APKM",
+          "appIconColor": "#161F13",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.3.20",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
