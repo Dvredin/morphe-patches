@@ -1,5 +1,7 @@
 package org.ungoogled.patches.waze
 
+import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
@@ -47,6 +49,97 @@ val wazeHideAdsPatch = bytecodePatch(
         keepWazeConfig("CONFIG_VALUE_ADS_INVENTORY_PREDICTION_ENABLED", false)
         keepWazeConfig("CONFIG_VALUE_AD_EVENTS_FEATURE_ENABLED", false)
         keepWazeConfig("CONFIG_VALUE_ADS_ALLOW_PROFILE_TARGETING_DEFAULT", false)
+        keepWazeConfig("CONFIG_VALUE_ADS_ALLOW_PROFILE_TARGETING", false)
+        // Partner pins and coupons ("external POIs"), and the promotional splash screens Waze's
+        // server can switch on at start (OFF, EVERY_COLD_START or DAILY).
+        keepWazeConfig("CONFIG_VALUE_EXTERNALPOI_MAX_POIS_DISPLAY", 0)
+        keepWazeConfig("CONFIG_VALUE_APP_LAUNCH_DYNAMIC_SPLASH_SCREEN_SHOW_FREQUENCY", "OFF")
+    }
+}
+
+@Suppress("unused")
+val wazeNoGoogleAssistantPatch = bytecodePatch(
+    name = "No Google Assistant",
+    description = "Keeps Google Assistant out of Waze: no Assistant button, onboarding or settings entry, whatever " +
+        "Waze's server enables for your region.",
+    default = false,
+) {
+    compatibleWith(COMPATIBILITY_WAZE)
+    dependsOn(wazeConfigOverridesPatch)
+
+    execute {
+        keepWazeConfig("CONFIG_VALUE_GOOGLE_ASSISTANT_WAZE_FEATURE_ENABLED", false)
+    }
+}
+
+@Suppress("unused")
+val wazeNoAiReportingPatch = bytecodePatch(
+    name = "No AI reporting",
+    description = "Turns off conversational reporting, Waze's Gemini voice assistant for reports, together with " +
+        "its activation dialog, tips and onboarding.",
+    default = false,
+) {
+    compatibleWith(COMPATIBILITY_WAZE)
+    dependsOn(wazeConfigOverridesPatch)
+
+    execute {
+        for (name in listOf(
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_IN_CAR_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_AGENT_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_ACTIVATION_DIALOG_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_FTE_TOOLTIP_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_BUTTON_EDUCATION_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_REPORT_MENU_ONBOARDING_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_NON_FTE_HINT_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_REPORT_BUTTON_FTE_HINT_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_REPORT_MENU_FTE_HINT_ENABLED",
+            "CONFIG_VALUE_REPORTING_CONVERSATIONAL_REPORTING_AGENT_FTE_HINT_ENABLED",
+        )) keepWazeConfig(name, false)
+    }
+}
+
+/** MoodManager.canSetMood(Context, String): whether the user has earned a mood. A JNI class, so the names survive. */
+private object CanSetMoodFingerprint : Fingerprint(
+    definingClass = "Lcom/waze/MoodManager;",
+    name = "canSetMood",
+    returnType = "Z",
+    parameters = listOf("Landroid/content/Context;", "Ljava/lang/String;"),
+)
+
+@Suppress("unused")
+val wazeAllMoodsPatch = bytecodePatch(
+    name = "All moods",
+    description = "Every mood can be chosen: the ones Waze keeps for higher ranks and the beta moods it hides.",
+    default = false,
+) {
+    compatibleWith(COMPATIBILITY_WAZE)
+    dependsOn(wazeConfigOverridesPatch)
+
+    execute {
+        keepWazeConfig("CONFIG_VALUE_MOODS_BETA_ENABLED", true)
+        CanSetMoodFingerprint.method.addInstructions(
+            0,
+            """
+                const/4 v0, 0x1
+                return v0
+            """,
+        )
+    }
+}
+
+@Suppress("unused")
+val wazeReportSpeedLimitPatch = bytecodePatch(
+    name = "Report speed limit",
+    description = "Turns on Waze's own switch for correcting the speed limit from the speedometer, the old mods' " +
+        "\"Report speed limit\". Waze's server keeps it off; what it shows is not verified here.",
+    default = false,
+) {
+    compatibleWith(COMPATIBILITY_WAZE)
+    dependsOn(wazeConfigOverridesPatch)
+
+    execute {
+        keepWazeConfig("CONFIG_VALUE_MAP_SPEEDOMETER_SPEED_LIMIT_OVERRIDE_ENABLED", true)
     }
 }
 
@@ -96,9 +189,13 @@ val wazeAlertDistancesPatch = bytecodePatch(
     val streets by intOption(key = "streets", default = 700, title = "Speed cameras on streets", description = "Waze: 500 m.")
     val highways by intOption(key = "highways", default = 900, title = "Speed cameras on highways", description = "Waze: 1000 m.")
     val freeways by intOption(key = "freeways", default = 1200, title = "Speed cameras on freeways", description = "Waze: 2000 m.")
+    val blockedLane by intOption(key = "blockedLane", default = 1000, title = "Blocked lanes", description = "Waze: 400 m.")
+    val between by intOption(key = "between", default = 200, title = "Least distance between two alerts", description = "Waze: 300 m.")
 
     execute {
         police?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_POLICE_ALERT_DISTANCE_METERS", it) }
+        blockedLane?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_BLOCKED_LANE_ALERT_DISTANCE", it) }
+        between?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_DISTANCE_BETWEEN_ALERTS", it) }
         hazard?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_HAZARD_ALERT_DISTANCE_METERS", it) }
         accident?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_ACCIDENT_ALERT_DISTANCE_METERS", it) }
         traffic?.let { keepWazeConfig("CONFIG_VALUE_ALERTS_HEAVY_TRAFFIC_ALERT_DISTANCE_METERS", it) }
