@@ -27,4 +27,20 @@ object Constants {
             AppTarget(version = "26.36.04.973607363"),
         ),
     )
+
+    /**
+     * AllTrails also ships as an App Bundle (`base.apk` plus ABI, density and
+     * language splits); its native libraries live in the ABI split. Pinned to one
+     * version for the same reason as Maps: R8 renames the classes every build.
+     */
+    val COMPATIBILITY_ALLTRAILS = Compatibility(
+        name = "AllTrails",
+        packageName = "com.alltrails.alltrails",
+        apkFileType = ApkFileType.APKM,
+        // The launcher icon's background plate is Denali's brand onyx.
+        appIconColor = 0x161F13,
+        targets = listOf(
+            AppTarget(version = "26.3.20"),
+        ),
+    )
 }
