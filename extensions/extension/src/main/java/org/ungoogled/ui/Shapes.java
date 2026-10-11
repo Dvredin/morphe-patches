@@ -82,8 +82,23 @@ public final class Shapes {
     public static boolean betterOfflinePatched() { return false; }
     public static boolean powerSavingPatched() { return false; }
     public static boolean hideDirectoryPatched() { return false; }
+    public static boolean hideAiPatched() { return false; }
     public static boolean highRefreshPatched() { return false; }
     public static boolean timelinePatched() { return false; }
+    public static boolean speedingChimePatched() { return false; }
+    public static boolean speedCamerasPatched() { return false; }
+    /** Add microG support: microG Maps, which signs in through microG. */
+    public static boolean microgPatched() { return false; }
+
+    /**
+     * Change package name: in place of the app's package name where Maps looks itself up in its
+     * table of Google's own builds (Location sharing's client number, keyed by package). A new
+     * package name is not in it, the lookup came back empty, and opening Location sharing crashed
+     * Maps (issue #30). To that table the app is stock Maps.
+     */
+    public static String mapsPackage(String actual) {
+        return actual != null && actual.startsWith("com.google.android.apps.") ? actual : "com.google.android.apps.maps";
+    }
     /** Location provider toggle's option: rewritten to return true when it defaults to Play services. */
     public static boolean playLocationByDefault() { return false; }
 
@@ -95,9 +110,12 @@ public final class Shapes {
     public static volatile boolean HIDE_EXPLORE = hideExplorePatched();
     public static volatile boolean HIDE_TABS = hideTabsPatched();
     public static volatile boolean HIDE_DIRECTORY = hideDirectoryPatched();
+    public static volatile boolean HIDE_AI = hideAiPatched();
     /** Off by default, unlike the others: it costs battery. */
     public static volatile boolean HIGH_REFRESH = false;
     public static volatile boolean BETTER_OFFLINE = betterOfflinePatched();
+    /** When the speeding chime sounds, one of SpeedAlerts' choices. */
+    public static volatile int SPEEDING_CHIME = speedingChimePatched() ? SpeedAlerts.RED : SpeedAlerts.OFF;
 
     /** Set right before an account-sheet row opens something of ours, so the sheet's tap
      *  dispatcher returns NO_DISMISS once instead of closing the sheet behind it. */
@@ -173,6 +191,7 @@ public final class Shapes {
      */
     public static void processStart(Context c) {
         try {
+            if (microgPatched()) MicroG.processStart(c);
             refreshPlayLocation(c);
             applyProxy(c);
         } catch (Throwable ignored) {}
@@ -194,7 +213,9 @@ public final class Shapes {
     }
 
     public static boolean hideTabsEnabled(Context c) {
-        return hideTabsPatched() && prefs(c).getBoolean(KEY_HIDE_TABS, true);
+        // Shown by default in microG Maps: the You and Contribute tabs hold the account's
+        // saved lists and contributions.
+        return hideTabsPatched() && prefs(c).getBoolean(KEY_HIDE_TABS, !microgPatched());
     }
 
     public static void setHideTabsEnabled(Context c, boolean on) {
@@ -215,6 +236,37 @@ public final class Shapes {
     public static void setHideDirectoryEnabled(Context c, boolean on) {
         prefs(c).edit().putBoolean(KEY_HIDE_DIRECTORY, on).commit();
         HIDE_DIRECTORY = on && hideDirectoryPatched();
+    }
+
+    // ---- Hide AI ---------------------------------------------------------------
+    // Gemini's "Know before you go" card on place sheets and the review summary
+    // ("Summarized with Gemini") on the Reviews tab. Read every time a place sheet
+    // is bound, so a change needs no restart.
+
+    public static final String KEY_HIDE_AI = "hide_ai";
+
+    public static boolean hideAiEnabled(Context c) {
+        return hideAiPatched() && prefs(c).getBoolean(KEY_HIDE_AI, true);
+    }
+
+    public static void setHideAiEnabled(Context c, boolean on) {
+        prefs(c).edit().putBoolean(KEY_HIDE_AI, on).commit();
+        HIDE_AI = on && hideAiPatched();
+    }
+
+    // ---- Speeding chime ----------------------------------------------------------
+    // SpeedAlerts does the work. Read on every speedometer change, so a change
+    // needs no restart.
+
+    public static final String KEY_SPEEDING_CHIME = "speeding_chime";
+
+    public static int speedingChime(Context c) {
+        return speedingChimePatched() ? prefs(c).getInt(KEY_SPEEDING_CHIME, SpeedAlerts.RED) : SpeedAlerts.OFF;
+    }
+
+    public static void setSpeedingChime(Context c, int mode) {
+        prefs(c).edit().putInt(KEY_SPEEDING_CHIME, mode).commit();
+        SPEEDING_CHIME = speedingChimePatched() ? mode : SpeedAlerts.OFF;
     }
 
     // ---- 120 refresh rate ------------------------------------------------------
@@ -256,27 +308,41 @@ public final class Shapes {
     // connection is pointed at a package that does not exist -- so "Android"
     // means Play services is never asked for a location at all.
     //
-    // It is never true while Play services is missing or disabled. Bypass Play
-    // Services checks makes the availability check succeed regardless, so Maps
-    // would otherwise pick the fused provider with nothing behind it and never
-    // get a fix -- the blue dot greys out and routing from your location hangs.
+    // The fused provider can come from Google's Play services or from microG, in
+    // either app (issue #34): Maps' location service connection is sent to the
+    // chosen one's package, under the name it answers. A source that is missing,
+    // disabled or (ReVanced GmsCore) has no location service is never used. Bypass
+    // Play Services checks makes the availability check succeed regardless, so Maps
+    // would otherwise pick the fused provider with nothing behind it and never get
+    // a fix -- the blue dot greys out and routing from your location hangs.
 
     public static final String KEY_PLAY_LOCATION = "play_location";
+    public static final String KEY_LOCATION_SOURCE = "location_source";
+    public static final String SOURCE_ANDROID = "android", SOURCE_MICROG = "microg", SOURCE_GOOGLE = "google";
     static final String PLAY_SERVICES = "com.google.android.gms";
-    private static volatile int PLAY_LOCATION = -1;   // -1 = not read yet
+    private static final String GOOGLE_LOCATION_SERVICE = "com.google.android.location.internal.GoogleLocationManagerService.START";
+    private static volatile String SOURCE = null;   // the source in use; null = not read yet
 
-    /** The user's choice, whether or not Play services can honour it right now. */
-    public static boolean playLocationEnabled(Context c) {
-        return prefs(c).getBoolean(KEY_PLAY_LOCATION, playLocationByDefault());
+    /** The user's choice, whether or not it can be honoured right now. */
+    public static String locationSource(Context c) {
+        SharedPreferences p = prefs(c);
+        String source = p.getString(KEY_LOCATION_SOURCE, null);
+        if (SOURCE_ANDROID.equals(source) || SOURCE_MICROG.equals(source) || SOURCE_GOOGLE.equals(source)) return source;
+        // Before there were three: on meant the app's own fused provider -- microG's in microG Maps.
+        if (!p.getBoolean(KEY_PLAY_LOCATION, playLocationByDefault())) return SOURCE_ANDROID;
+        return microgPatched() ? SOURCE_MICROG : SOURCE_GOOGLE;
     }
 
-    public static void setPlayLocationEnabled(Context c, boolean on) {
-        prefs(c).edit().putBoolean(KEY_PLAY_LOCATION, on).commit();
+    public static void setLocationSource(Context c, String source) {
+        prefs(c).edit().putString(KEY_LOCATION_SOURCE, source)
+                .putBoolean(KEY_PLAY_LOCATION, !SOURCE_ANDROID.equals(source)).commit();
         refreshPlayLocation(c);
     }
 
-    /** Play services is installed and enabled. */
-    public static boolean playServicesUsable(Context c) {
+    /** [source] can give Maps a location: Android always; Google's Play services or microG when installed and enabled. */
+    public static boolean locationSourceUsable(Context c, String source) {
+        if (SOURCE_MICROG.equals(source)) return MicroG.locationService(c);
+        if (!SOURCE_GOOGLE.equals(source)) return true;
         try {
             return c.getPackageManager().getApplicationInfo(PLAY_SERVICES, 0).enabled;
         } catch (Throwable t) {
@@ -284,29 +350,51 @@ public final class Shapes {
         }
     }
 
+    /** The source Maps uses: the chosen one, or Android's own while the chosen one cannot answer. */
+    public static String locationSourceInUse(Context c) {
+        String source = locationSource(c);
+        return locationSourceUsable(c, source) ? source : SOURCE_ANDROID;
+    }
+
     static void refreshPlayLocation(Context c) {
         if (!locationSourcePatched()) return;
-        PLAY_LOCATION = playLocationEnabled(c) && playServicesUsable(c) ? 1 : 0;
+        SOURCE = locationSourceInUse(c);
+    }
+
+    private static String sourceInUse() {
+        String v = SOURCE;
+        if (v == null) {
+            Context app = application();
+            if (app == null) return SOURCE_ANDROID;   // not known yet: Android's own providers always work
+            refreshPlayLocation(app);
+            v = SOURCE;
+        }
+        return v == null ? SOURCE_ANDROID : v;
     }
 
     /** Called from the fused-provider availability check, possibly before any Activity exists. */
     public static boolean playLocation() {
-        int v = PLAY_LOCATION;
-        if (v < 0) {
-            Context app = application();
-            if (app == null) return false;   // not known yet: Android's own providers always work
-            refreshPlayLocation(app);
-            v = PLAY_LOCATION;
-        }
-        return v == 1;
+        return !SOURCE_ANDROID.equals(sourceInUse());
+    }
+
+    private static boolean locationService(String action) {
+        return GOOGLE_LOCATION_SERVICE.equals(action) || MicroG.RENAMED_LOCATION_ACTION.equals(action);
     }
 
     /** Called with the package and service action of every Play services connection Maps opens. */
     public static String locationPackage(String pkg, String action) {
-        if (action != null && action.startsWith("com.google.android.location.") && !playLocation()) {
-            return "org.ungoogled.no.play.location";
-        }
-        return pkg;
+        // MicroG-RE answers the location service under its own name (MicroG.locationAction).
+        if (action == null || !(action.startsWith("com.google.android.location.")
+                || action.startsWith("app.revanced.android.location."))) return pkg;
+        if (!playLocation()) return "org.ungoogled.no.play.location";
+        if (!locationService(action)) return pkg;
+        return SOURCE_MICROG.equals(sourceInUse()) ? MicroG.PACKAGE : PLAY_SERVICES;
+    }
+
+    /** Called just before locationPackage: the location service's name, as the chosen source answers it. */
+    public static String locationAction(String pkg, String action) {
+        if (!locationService(action) || !playLocation()) return action;
+        return SOURCE_MICROG.equals(sourceInUse()) ? MicroG.locationAction() : GOOGLE_LOCATION_SERVICE;
     }
 
     private static Context application() {
@@ -476,15 +564,43 @@ public final class Shapes {
     }
 
     private static void restoreTheme(Context c) {
+        restoreTheme(c, true, true);
+    }
+
+    /** Puts back the captured value of each setting asked for, then forgets the capture. */
+    private static void restoreTheme(Context c, boolean dark, boolean nav) {
         try {
             SharedPreferences ours = prefs(c);
             String d = ours.getString(KEY_PREV_DARK, null), n = ours.getString(KEY_PREV_NAV, null);
             SharedPreferences.Editor e = c.getSharedPreferences("settings_preference", Context.MODE_PRIVATE).edit();
-            if (d == null || ABSENT.equals(d)) e.remove("dark_mode"); else e.putString("dark_mode", d);
-            if (n == null || ABSENT.equals(n)) e.remove(KEY_NAV_SCHEME); else e.putString(KEY_NAV_SCHEME, n);
+            if (dark) { if (d == null || ABSENT.equals(d)) e.remove("dark_mode"); else e.putString("dark_mode", d); }
+            if (nav) { if (n == null || ABSENT.equals(n)) e.remove(KEY_NAV_SCHEME); else e.putString(KEY_NAV_SCHEME, n); }
             e.commit();
             ours.edit().remove(KEY_PREV_DARK).remove(KEY_PREV_NAV).commit();
         } catch (Throwable ignored) {}
+    }
+
+    /**
+     * Black theme only ever writes dark_mode=ON and the navigation scheme FORCE_NIGHT, so
+     * once it has taken them over, anything else there was picked by the user in Maps' own
+     * Settings. Re-pinning dark at the next Activity made "Always in light theme" come back
+     * dark after every restart, so Black theme steps aside instead: it switches itself off,
+     * keeps what they picked, and puts the other setting back the way it was before.
+     */
+    private static boolean themePickedInMaps(Context c) {
+        try {
+            SharedPreferences ours = prefs(c);
+            if (!ours.contains(KEY_PREV_DARK)) return false;   // not taken over yet
+            SharedPreferences sp = c.getSharedPreferences("settings_preference", Context.MODE_PRIVATE);
+            boolean dark = !"ON".equals(sp.getString("dark_mode", null));
+            boolean nav = !"FORCE_NIGHT".equals(sp.getString(KEY_NAV_SCHEME, null));
+            if (!dark && !nav) return false;
+            ours.edit().putBoolean(KEY_BLACK, false).commit();
+            restoreTheme(c, !dark, !nav);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private static void enforceDark(Context c) {
@@ -510,7 +626,8 @@ public final class Shapes {
      * entirely. Black needs the dark palette underneath, so ON pins
      * dark_mode=ON and the navigation scheme to FORCE_NIGHT. Switching Black
      * OFF puts back whatever the user had before, captured by saveTheme() on
-     * the way in.
+     * the way in. Picking a theme in Maps' own Settings also switches it off,
+     * see themePickedInMaps().
      */
     public static void setBlackEnabled(Context c, boolean on) {
         if (on) saveTheme(c);                   // capture the user's Light/Dark/System choice first
@@ -528,12 +645,17 @@ public final class Shapes {
     public static Context wrap(Context base) {
         try {
             RECT = enabled(base);
-            BLACK = blackEnabled(base);
+            BLACK = blackEnabled(base) && !themePickedInMaps(base);
             HIDE_ADS = hideAdsEnabled(base);
             HIDE_EXPLORE = hideExploreEnabled(base);
             HIDE_TABS = hideTabsEnabled(base);
             HIDE_DIRECTORY = hideDirectoryEnabled(base);
+            HIDE_AI = hideAiEnabled(base);
+            SPEEDING_CHIME = speedingChime(base);
+            if (speedCamerasPatched()) SpeedCameras.refresh(base);
             HIGH_REFRESH = highRefreshEnabled(base);
+            PowerSaving.refresh(base);
+            if (microgPatched()) MicroG.track(base);
             SavedPlaces.track(base);
             BETTER_OFFLINE = betterOfflineEnabled(base);
             NAV_ZOOM_BUTTONS = navZoomEnabled(base);
@@ -546,7 +668,7 @@ public final class Shapes {
             if (RECT) c.mnc = MNC_RECT;
             if (BLACK) {
                 c.mcc = MCC_BLACK;   // night itself comes from Maps' own dark_mode setting, see setBlackEnabled
-                enforceDark(base);   // ...which Maps' own Settings page could flip back: re-pin it on every Activity
+                enforceDark(base);   // ...pinned again at every Activity, unless the user changed it (themePickedInMaps)
             }
             // Maps applies its own theme setting to its AppCompat screens (Settings and its
             // pages) by updating each Activity's configuration after it is attached, and a
@@ -567,6 +689,23 @@ public final class Shapes {
         if ("ON".equals(mode)) return Configuration.UI_MODE_NIGHT_YES;
         if ("OFF".equals(mode)) return Configuration.UI_MODE_NIGHT_NO;
         return 0;
+    }
+
+    /**
+     * {left, top, right, bottom} of the system bars, plus the keyboard when ime is set.
+     * WindowInsets.Type is Android 11+, and people also patch a 26.36.04 build that runs
+     * on Android 10 (issue #8), where it crashed every screen of ours; there the older
+     * system-window insets carry the same sizes.
+     */
+    static int[] barInsets(android.view.WindowInsets in, boolean ime) {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            int types = android.view.WindowInsets.Type.systemBars();
+            if (ime) types |= android.view.WindowInsets.Type.ime();
+            android.graphics.Insets i = in.getInsets(types);
+            return new int[] {i.left, i.top, i.right, i.bottom};
+        }
+        return new int[] {in.getSystemWindowInsetLeft(), in.getSystemWindowInsetTop(),
+                in.getSystemWindowInsetRight(), in.getSystemWindowInsetBottom()};
     }
 
     /** Relaunch the app so every Activity is recreated with the new resources. */
@@ -709,16 +848,24 @@ public final class Shapes {
     public static void navCam(Object controller) {
         if (controller == null) return;
         navCamAt = android.os.SystemClock.uptimeMillis();
+        if (speedCamerasPatched()) SpeedCameras.navigating(true);
         if (controller != NAV_CAM) {
             NAV_CAM = controller;
             if (NAV_TRACE) android.util.Log.w("UA", "NAVCAM controller published: " + controller.getClass().getName());
             // Attach on THIS frame rather than waiting for the next tick: the
             // tiles were visibly appearing after the rest of the nav chrome.
-            try { new android.os.Handler(android.os.Looper.getMainLooper()).post(new NavTicker()); }
+            // The one ticker, brought forward -- not a new one: each new controller
+            // used to start another ticker that never stopped, and they piled up
+            // (13 found queued in one process, each walking every window).
+            try { MAIN.removeCallbacks(TICKER); MAIN.post(TICKER); }
             catch (Throwable t) { }
         }
         startNavTicker();
     }
+
+    /** The navigation ticker, and the one Handler that schedules it, so it can be rescheduled in place. */
+    static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
+    static final NavTicker TICKER = new NavTicker();
 
     // ---- nav zoom: hold an override on the navigation camera --------------
     //
@@ -852,6 +999,7 @@ public final class Shapes {
      *  up to three seconds after the rest of the drive chrome had gone. */
     public static void navEnded() {
         navCamAt = 0L;
+        if (speedCamerasPatched()) SpeedCameras.navigating(false);
         try {
             if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) detachTiles();
             else new android.os.Handler(android.os.Looper.getMainLooper()).post(new Detach());
@@ -1067,6 +1215,13 @@ public final class Shapes {
             }
         }
         return null;
+    }
+
+    /** The window's top on screen: below the status bar when the window is not drawn behind it. */
+    static int decorTop(android.view.View decor) {
+        int[] o = new int[2];
+        decor.getLocationOnScreen(o);
+        return o[1];
     }
 
     /** The badge CARD, found by walking up from the "mph" label to the largest
@@ -1338,6 +1493,58 @@ public final class Shapes {
         return t;
     }
 
+    /** Power Saving Options > Open without locking: a tile like the zoom ones, a battery saver icon on it. */
+    static android.view.View powerTile(Context ctx) {
+        android.view.View t = tile(ctx, "", 0f);
+        t.setOnClickListener(new PowerSaving.OpenClick());
+        t.setForeground(new BatteryIcon(ctx.getResources().getDisplayMetrics().density,
+                                        navDarkScheme() ? 0xFFFFFFFF : 0xFF1F1F1F));
+        t.setContentDescription("Power saving screen");
+        return t;
+    }
+
+    /**
+     * Android's battery saver icon -- a battery outline with a plus -- drawn with the
+     * reset icon's stroke so the tiles match. Only the centre of the bounds is used.
+     * Named class, not anonymous: d8 NPEs on anonymous classes in this build.
+     */
+    static final class BatteryIcon extends android.graphics.drawable.Drawable {
+        private final android.graphics.Paint stroke =
+                new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Paint fill =
+                new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final float d;
+
+        BatteryIcon(float density, int colour) {
+            this.d = density;
+            stroke.setColor(colour);
+            stroke.setStyle(android.graphics.Paint.Style.STROKE);
+            stroke.setStrokeWidth(2.6f * density);
+            stroke.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            fill.setColor(colour);
+            fill.setStyle(android.graphics.Paint.Style.FILL);
+        }
+
+        public void draw(android.graphics.Canvas c) {
+            android.graphics.Rect b = getBounds();
+            float cx = b.exactCenterX(), cy = b.exactCenterY() + 1.5f * d;
+            float w = 14f * d, h = 22f * d;
+            android.graphics.RectF body = new android.graphics.RectF(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
+            c.drawRoundRect(body, 2.5f * d, 2.5f * d, stroke);
+            c.drawRoundRect(new android.graphics.RectF(cx - 3.5f * d, body.top - 3.5f * d, cx + 3.5f * d, body.top),
+                    1f * d, 1f * d, fill);
+            float p = 3.6f * d;
+            c.drawLine(cx - p, cy, cx + p, cy, stroke);
+            c.drawLine(cx, cy - p, cx, cy + p, stroke);
+        }
+
+        public void setAlpha(int alpha) { stroke.setAlpha(alpha); fill.setAlpha(alpha); }
+        public void setColorFilter(android.graphics.ColorFilter cf) {
+            stroke.setColorFilter(cf); fill.setColorFilter(cf);
+        }
+        public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+    }
+
     static final class ZoomClick implements android.view.View.OnClickListener {
         final float dx;                        // 0 = reset to Maps' automatic zoom
         ZoomClick(float dx) { this.dx = dx; }
@@ -1348,14 +1555,16 @@ public final class Shapes {
 
     /** LayoutParams with the leading margin that produces our visible gap.
      *  A helper, not an anonymous subclass: d8 NPEs on anonymous classes here. */
-    static android.widget.LinearLayout.LayoutParams lmargin(int side, int gap, boolean horizontal) {
+    static android.widget.LinearLayout.LayoutParams lmargin(int side, int gap) {
         android.widget.LinearLayout.LayoutParams p =
                 new android.widget.LinearLayout.LayoutParams(side, side);
-        if (horizontal) p.leftMargin = gap; else p.topMargin = gap;
+        p.topMargin = gap;
         return p;
     }
 
     static android.view.View navTiles;
+    /** What the column was built with, so a change of either switch rebuilds it. */
+    private static boolean navTilesZoom, navTilesPower;
 
     private static int navAttachTries;
     /** Where the tiles last sat. The speed badge we position against is not in
@@ -1418,89 +1627,186 @@ public final class Shapes {
         int gap    = Math.max(0, vgap - 2 * pad);              // margin -> that visible gap
         android.view.View label = findSpeedBadge(decor);   // first: it sets speedUnit, which tile() reads
         android.view.View badge = label == null ? null : badgeCard(label, decor);
+        // LANDSCAPE puts the column beside Maps' own buttons down the right-hand
+        // side instead: reset level with the compass, + with search, - with
+        // sound. On the left there is only ~100dp between the speed badge and
+        // the turn card, so a column there drew over the card, and the row that
+        // replaced it hung into the display-cutout band (both measured).
+        boolean land = decor.getWidth() > decor.getHeight();
+        int[] beside = land ? besideStack(decor, side) : null;
         // The badge is what we position against AND what tells us the colour
         // scheme, and it is not necessarily laid out on the tick that first sees
         // nav_container. Give it a few seconds rather than silently settling for
-        // the guessed position and the wrong colours.
+        // the guessed position and the wrong colours -- and in landscape Maps'
+        // buttons the same.
         boolean haveCached = lastLeft >= 0 && lastBottom > 0;
-        if ((label == null || decor.getHeight() <= 0) && !haveCached && navAttachTries < 5) {
+        boolean waitBadge = (label == null || decor.getHeight() <= 0) && !haveCached;
+        if ((waitBadge || (land && beside == null)) && navAttachTries < 5) {
             navAttachTries++; return;
         }
-        // LANDSCAPE lays the pair out side by side. Stacked, the column is
-        // 2*46+10 = 102dp tall, and in landscape there is only about 100dp
-        // between the speed badge and the turn card -- measured: the "+" tile
-        // drew ON TOP of the card. Side by side it is 46dp tall and clears it.
-        boolean land = decor.getWidth() > decor.getHeight();
-        android.widget.LinearLayout col = new android.widget.LinearLayout(ctx);
-        col.setOrientation(land ? android.widget.LinearLayout.HORIZONTAL
-                                : android.widget.LinearLayout.VERTICAL);
-        // minus on the left reading left-to-right, plus above reading bottom-up:
-        // either way "+" is the one nearer the top/right, as on Maps' own controls
-        android.view.View plus  = tile(ctx, "+", +1f),
-                          minus = tile(ctx, "\u2212", -1f),
-                          reset = tile(ctx, null, 0f);        // null glyph -> the drawn ResetIcon
-        // Portrait reads top-to-bottom reset / + / -, landscape is that same
-        // order laid out bottom-to-top, i.e. - / + / reset left to right, so the
-        // two orientations stay consistent with each other.
-        if (land) {
-            col.addView(minus, new android.widget.LinearLayout.LayoutParams(side, side));
-            col.addView(plus,  lmargin(side, gap, true));
-            col.addView(reset, lmargin(side, gap, true));
-        } else {
-            col.addView(reset, new android.widget.LinearLayout.LayoutParams(side, side));
-            col.addView(plus,  lmargin(side, gap, false));
-            col.addView(minus, lmargin(side, gap, false));
+        ClipColumn col = new ClipColumn(ctx);
+        col.setOrientation(android.widget.LinearLayout.VERTICAL);
+        boolean zoom = NAV_ZOOM_BUTTONS, power = PowerSaving.navButton();
+        java.util.List<android.view.View> tiles = new java.util.ArrayList<>();
+        // Top to bottom reset / + / -: "+" is the one nearer the top, as on Maps' own controls.
+        // Power saving (Open without locking) goes on top of them in portrait, and below them
+        // in landscape, where the column starts level with Maps' topmost button.
+        if (power && !land) tiles.add(powerTile(ctx));
+        if (zoom) {
+            tiles.add(tile(ctx, null, 0f));                    // null glyph -> the drawn ResetIcon
+            tiles.add(tile(ctx, "+", +1f));
+            tiles.add(tile(ctx, "\u2212", -1f));
         }
+        if (power && land) tiles.add(powerTile(ctx));
+        if (tiles.isEmpty()) return;
+        for (int i = 0; i < tiles.size(); i++) {
+            col.addView(tiles.get(i), i == 0 ? new android.widget.LinearLayout.LayoutParams(side, side) : lmargin(side, gap));
+        }
+        int rows = tiles.size();
 
         android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
-        // LEFT is a fixed 16dp gutter, NOT taken from the badge. findSpeedBadge
-        // returns the parent of the "mph" label, and which view that is depends
-        // on what the badge is currently showing -- with the speed-limit sign up
-        // it can be an inner container indented well inside the card. Measured:
-        // the badge card's own left edge is 16dp, exactly this gutter, so this
-        // is both the correct alignment and a stable one. Observed failure: a
-        // re-attach mid-navigation landed the column at left=158 instead of 42.
-        int left = gutter - pad, bottom = Math.round(150f * d);
-        int step = side + gap;                               // one row of the grid
-        if (badge != null && decor.getHeight() > 0) {
-            int[] at = new int[2]; badge.getLocationOnScreen(at);
-            // at[1] is the badge's VIEW top, which carries the same transparent
-            // mask padding our own views do -- so the margin between the two
-            // VIEW boxes that yields a 21dp visible gap is `gap`, not
-            // `vgap - pad`. Getting that wrong sat the column ~14px high and is
-            // why its rows did not line up with the stack opposite.
-            int b = decor.getHeight() - at[1] + gap;
-            int lo = Math.round(80f * d), hi = Math.round(decor.getHeight() * 0.7f);
-            if (b >= lo && b <= hi) bottom = b;
+        if (land) {
+            if (beside == null) beside = besideGuess(decor, side);
+            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.LEFT;
+            lp.leftMargin = beside[0]; lp.topMargin = beside[1];
+        } else {
+            lp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
+            // LEFT is a fixed 16dp gutter, NOT taken from the badge. findSpeedBadge
+            // returns the parent of the "mph" label, and which view that is depends
+            // on what the badge is currently showing -- with the speed-limit sign up
+            // it can be an inner container indented well inside the card. Measured:
+            // the badge card's own left edge is 16dp, exactly this gutter, so this
+            // is both the correct alignment and a stable one. Observed failure: a
+            // re-attach mid-navigation landed the column at left=158 instead of 42.
+            int left = gutter - pad, bottom = Math.round(150f * d);
+            int step = side + gap;                               // one row of the grid
+            if (badge != null && decor.getHeight() > 0) {
+                int[] at = new int[2]; badge.getLocationOnScreen(at);
+                at[1] -= decorTop(decor);                        // the window need not start at the screen's top
+                // at[1] is the badge's VIEW top, which carries the same transparent
+                // mask padding our own views do -- so the margin between the two
+                // VIEW boxes that yields a 21dp visible gap is `gap`, not
+                // `vgap - pad`. Getting that wrong sat the column ~14px high and is
+                // why its rows did not line up with the stack opposite.
+                int b = decor.getHeight() - at[1] + gap;
+                int lo = Math.round(80f * d), hi = Math.round(decor.getHeight() * 0.7f);
+                if (b >= lo && b <= hi) bottom = b;
+            }
+            // Phase-lock onto Maps' own button stack so the two columns share rows.
+            // Only the phase is taken, not the row index: we do not need to know
+            // which button was found, just where its grid falls.
+            android.view.View fab = findNavFab(decor);
+            if (fab != null && fab.getHeight() > 0 && step > 0) {
+                int[] fat = new int[2]; fab.getLocationOnScreen(fat);
+                fat[1] -= decorTop(decor);
+                int colTop = decor.getHeight() - bottom - (rows * side + (rows - 1) * gap);
+                int delta = ((fat[1] - colTop) % step + step) % step;
+                if (delta > step / 2) delta -= step;             // nearest row, either way
+                if (Math.abs(delta) <= gap) bottom -= delta;     // only a nudge, never a jump
+            }
+            if (badge == null && haveCached) { left = lastLeft; bottom = lastBottom; }
+            if (badge != null && (left != lastLeft || bottom != lastBottom)) savePlacement(ctx, left, bottom);
+            lastLeft = left; lastBottom = bottom;
+            lp.leftMargin = left; lp.bottomMargin = bottom;
         }
-        // Phase-lock onto Maps' own button stack so the two columns share rows.
-        // Only the phase is taken, not the row index: we do not need to know
-        // which button was found, just where its grid falls.
-        android.view.View fab = land ? null : findNavFab(decor);
-        if (fab != null && fab.getHeight() > 0 && step > 0) {
-            int[] fat = new int[2]; fab.getLocationOnScreen(fat);
-            int colTop = decor.getHeight() - bottom - (3 * side + 2 * gap);
-            int delta = ((fat[1] - colTop) % step + step) % step;
-            if (delta > step / 2) delta -= step;             // nearest row, either way
-            if (Math.abs(delta) <= gap) bottom -= delta;     // only a nudge, never a jump
-        }
-        if (badge == null && haveCached) { left = lastLeft; bottom = lastBottom; }
-        if (badge != null && (left != lastLeft || bottom != lastBottom)) savePlacement(ctx, left, bottom);
-        lastLeft = left; lastBottom = bottom;
-        lp.leftMargin = left; lp.bottomMargin = bottom;
         decor.addView(col, lp);
         navTiles = col;
+        navTilesZoom = zoom;
+        navTilesPower = power;
+        watchCovers(decor);
         navLandscape = land;
         navAttachTries = 0;   // so a LATER attach (rotation -> new decor) waits for the badge too
-        if (NAV_TRACE) android.util.Log.w("UA", "NAVZOOM tiles attached at left=" + left + " bottom=" + bottom
-                + (land ? " landscape/side-by-side" : " portrait/stacked")
-                + (badge == null ? " (no speed badge found, using fallback)" : " (above the speed badge)"));
+        if (NAV_TRACE) android.util.Log.w("UA", "NAVZOOM tiles attached at left=" + lp.leftMargin
+                + (land ? " top=" + lp.topMargin + " landscape, beside Maps' buttons"
+                        : " bottom=" + lp.bottomMargin
+                          + (badge == null ? " (no speed badge found, using fallback)" : " (above the speed badge)")));
+    }
+
+    /** Landscape: where the column goes -- one column in from Maps' own buttons down the
+     *  right-hand side (compass, search, sound), row for row, the faces as far apart across as
+     *  they are down (Maps' grid: 56dp faces 21dp apart). {left, top} in the decor, or null
+     *  while those buttons are not laid out. */
+    static int[] besideStack(android.view.ViewGroup decor, int side) {
+        android.graphics.Rect top = findNavStack(decor);
+        if (top == null) return null;
+        int step = Math.round((FACE_DP + 21f) * decor.getResources().getDisplayMetrics().density);
+        int left = top.centerX() - step - side / 2, y = top.centerY() - side / 2;
+        return left < 0 || y < 0 ? null : new int[] { left, y };
+    }
+
+    /** Those buttons not found: where they would put the column. Maps keeps them ~20dp in from
+     *  the right of its content (measured); the height is a guess, which repositionTiles()
+     *  corrects as soon as they turn up. */
+    static int[] besideGuess(android.view.ViewGroup decor, int side) {
+        float d = decor.getResources().getDisplayMetrics().density;
+        int right = decor.getWidth(), top = 0;
+        try {
+            android.view.WindowInsets wi = decor.getRootWindowInsets();
+            if (wi != null && android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets in = wi.getInsets(android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout());
+                right -= in.right; top = in.top;
+            } else if (wi != null) {
+                int[] in = barInsets(wi, false);
+                right -= in[2]; top = in[1];
+            }
+        } catch (Throwable t) { }
+        int cx = right - Math.round((20f + FACE_DP / 2f) * d), cy = top + Math.round((24f + FACE_DP / 2f) * d);
+        int step = Math.round((FACE_DP + 21f) * d);
+        return new int[] { Math.max(0, cx - step - side / 2), Math.max(0, cy - side / 2) };
+    }
+
+    /** Maps' buttons down the right-hand side, found by shape: idOf() is 0 for every name on a
+     *  merged install (names stripped). The biggest set of squares the size of Maps' nav buttons
+     *  sharing one left edge, right of the middle and above the trip sheet; their top one, in the
+     *  decor. Null until at least two are laid out. */
+    static android.graphics.Rect findNavStack(android.view.ViewGroup decor) {
+        java.util.List<android.graphics.Rect> sq = new java.util.ArrayList<>();
+        int[] o = new int[2];
+        decor.getLocationOnScreen(o);
+        int size = Math.round(MASK_DP * decor.getResources().getDisplayMetrics().density);
+        collectSquares(decor, size, decor.getWidth(), decor.getHeight(), o, sq);
+        android.graphics.Rect best = null;
+        int most = 1;
+        for (android.graphics.Rect r : sq) {
+            int n = 0;
+            android.graphics.Rect top = r;
+            for (android.graphics.Rect s : sq) {
+                if (Math.abs(s.left - r.left) > 4) continue;
+                n++;
+                if (s.top < top.top) top = s;
+            }
+            // a button's own inner view makes a second, narrower column: the rightmost wins a tie,
+            // and either gives the same centres
+            if (n > most || (n == most && best != null && top.left > best.left)) { most = n; best = top; }
+        }
+        return best;
+    }
+
+    private static void collectSquares(android.view.View v, int size, int w, int h, int[] o,
+                                       java.util.List<android.graphics.Rect> out) {
+        if (v == navTiles || v.getVisibility() != android.view.View.VISIBLE || v.getAlpha() < 0.1f) return;
+        int vw = v.getWidth(), vh = v.getHeight();
+        if (Math.abs(vw - size) <= size / 6 && Math.abs(vh - vw) <= size / 16) {
+            int[] at = new int[2];
+            v.getLocationOnScreen(at);
+            int x = at[0] - o[0], y = at[1] - o[1];
+            if (x + vw / 2 > w / 2 && y + vh < h * 0.8f) {
+                boolean seen = false;          // a button and a view filling it share one box
+                for (android.graphics.Rect s : out) seen |= Math.abs(s.left - x) <= 2 && Math.abs(s.top - y) <= 2;
+                if (!seen) out.add(new android.graphics.Rect(x, y, x + vw, y + vh));
+            }
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) collectSquares(g.getChildAt(i), size, w, h, o, out);
+        }
     }
 
     /** Remove the tiles but keep navZoom and NAV_CAM, so the held zoom survives. */
     static void hideTiles() {
+        unwatchCovers();
         android.view.View t = navTiles;
         navTiles = null;
         if (t == null) return;
@@ -1516,6 +1822,16 @@ public final class Shapes {
      *  position we guessed from the cache was wrong. */
     static void repositionTiles(android.view.ViewGroup decor) {
         try {
+            if (navLandscape) {            // follow Maps' buttons, e.g. when the turn card grows
+                int[] at = besideStack(decor, tileSide(decor.getContext()));
+                android.view.ViewGroup.LayoutParams lp0 = navTiles.getLayoutParams();
+                if (at == null || !(lp0 instanceof android.widget.FrameLayout.LayoutParams)) return;
+                android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) lp0;
+                if (Math.abs(lp.leftMargin - at[0]) <= 2 && Math.abs(lp.topMargin - at[1]) <= 2) return;
+                lp.leftMargin = at[0]; lp.topMargin = at[1];
+                navTiles.setLayoutParams(lp);
+                return;
+            }
             android.view.View lbl = findSpeedBadge(decor);
             if (lbl == null || decor.getHeight() <= 0) return;
             android.view.View card = badgeCard(lbl, decor);
@@ -1523,6 +1839,7 @@ public final class Shapes {
             int pad = tilePad(decor.getContext());
             int gap = Math.max(0, Math.round(21f * d) - 2 * pad);
             int[] at = new int[2]; card.getLocationOnScreen(at);
+            at[1] -= decorTop(decor);
             int b = decor.getHeight() - at[1] + gap;
             int lo = Math.round(80f * d), hi = Math.round(decor.getHeight() * 0.7f);
             if (b < lo || b > hi) return;
@@ -1536,6 +1853,7 @@ public final class Shapes {
     }
 
     static void detachTiles() {
+        unwatchCovers();
         android.view.View t = navTiles;
         navTiles = null;
         if (t == null) return;
@@ -1548,6 +1866,123 @@ public final class Shapes {
         speedUnit = null;        // a static View reference would pin the Activity
         navAttachTries = 0;
         NAV_CAM = null;          // blyt.k() republishes on the next session
+    }
+
+    // ---- Maps' panels slide over its own controls; ours sit on the window's top layer ----------------
+    // Navigation's trip sheet pulled up covers Maps' speedometer and buttons, but left our tiles floating
+    // on top of it (reported with the sheet up). The tiles cannot sit inside Maps' layout (its view DSL
+    // throws foreign children out), so they act covered instead: frame by frame they are drawn, and take
+    // taps, only above the top edge of a panel sliding over them -- the sheet sits over them as it does
+    // over Maps' search and compass buttons.
+    private static final java.util.List<java.lang.ref.WeakReference<android.view.View>> coverViews = new java.util.ArrayList<>();
+    private static java.lang.ref.WeakReference<android.view.ViewGroup> coverDecor = new java.lang.ref.WeakReference<>(null);
+    private static android.view.ViewTreeObserver.OnPreDrawListener coverWatch;
+
+    /** The tiles' column: drawn and touchable only above [visible] px from its top (-1 = all of it). */
+    static final class ClipColumn extends android.widget.LinearLayout {
+        int visible = -1;
+
+        ClipColumn(Context c) { super(c); }
+
+        /** A touch on the covered part belongs to the panel over it, which Android offers it to next. */
+        @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+            if (visible >= 0 && e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN && e.getY() >= visible) return false;
+            return super.dispatchTouchEvent(e);
+        }
+    }
+
+    private static void watchCovers(android.view.ViewGroup decor) {
+        unwatchCovers();
+        coverWatch = () -> { coverCheck(); return true; };
+        decor.getViewTreeObserver().addOnPreDrawListener(coverWatch);
+        coverDecor = new java.lang.ref.WeakReference<>(decor);
+        findCovers(decor);
+    }
+
+    private static void unwatchCovers() {
+        android.view.ViewGroup d = coverDecor.get();
+        if (d != null && coverWatch != null) {
+            try { d.getViewTreeObserver().removeOnPreDrawListener(coverWatch); } catch (Throwable t) { }
+        }
+        coverWatch = null;
+        coverDecor = new java.lang.ref.WeakReference<>(null);
+        coverViews.clear();
+    }
+
+    /** From the ticker: the panels that could slide over the tiles -- a painted background, at least a
+     *  third of the window wide and a sixth tall, and not the window itself (the map, its frames). */
+    static void findCovers(android.view.ViewGroup decor) {
+        coverViews.clear();
+        int w = decor.getWidth(), h = decor.getHeight();
+        if (w <= 0 || h <= 0) return;
+        int[] at = new int[2];
+        decor.getLocationOnScreen(at);
+        collectCovers(decor, w, h, at[1], new int[2]);
+    }
+
+    /**
+     * @param top the window's own top on screen. Positions are taken relative to it: a
+     * window that does not start at the top of the screen (not drawn behind the status
+     * bar) otherwise counted ITSELF as a panel over the tiles, and they were clipped away
+     * entirely -- seen as zoom tiles that never appeared.
+     */
+    private static void collectCovers(android.view.View v, int w, int h, int top, int[] at) {
+        if (v == navTiles || v.getVisibility() != android.view.View.VISIBLE) return;
+        android.graphics.drawable.Drawable bg = v.getBackground();
+        if (bg != null && v.getWidth() >= w * 0.3f && v.getHeight() >= h / 6f && painted(bg)) {
+            v.getLocationOnScreen(at);
+            boolean window = v.getParent() == null || v.getRootView() == v
+                    || (at[1] - top <= h * 0.05f && v.getHeight() >= h * 0.9f);
+            if (!window) {
+                coverViews.add(new java.lang.ref.WeakReference<>(v));
+                if (NAV_TRACE) android.util.Log.w("UA", "NAVZOOM cover candidate " + v.getClass().getName()
+                        + " at " + at[0] + "," + at[1] + " " + v.getWidth() + "x" + v.getHeight());
+            }
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) collectCovers(g.getChildAt(i), w, h, top, at);
+        }
+    }
+
+    /** A background that paints something: not a see-through colour, not a bare touch ripple. */
+    private static boolean painted(android.graphics.drawable.Drawable bg) {
+        if (bg instanceof android.graphics.drawable.ColorDrawable) {
+            return android.graphics.Color.alpha(((android.graphics.drawable.ColorDrawable) bg).getColor()) >= 128;
+        }
+        if (bg instanceof android.graphics.drawable.RippleDrawable) {
+            android.graphics.drawable.RippleDrawable r = (android.graphics.drawable.RippleDrawable) bg;
+            for (int i = 0; i < r.getNumberOfLayers(); i++) if (r.getId(i) != android.R.id.mask) return true;
+            return false;
+        }
+        return bg.getAlpha() > 0;
+    }
+
+    /** Every frame: cut the tiles off at the top edge of any of those panels lying over them. */
+    private static void coverCheck() {
+        if (!(navTiles instanceof ClipColumn)) return;
+        ClipColumn tiles = (ClipColumn) navTiles;
+        if (tiles.getWidth() == 0) return;
+        int[] at = new int[2];
+        tiles.getLocationOnScreen(at);
+        int left = at[0], top = at[1], right = left + tiles.getWidth(), bottom = top + tiles.getHeight();
+        int edge = Integer.MAX_VALUE;
+        for (java.lang.ref.WeakReference<android.view.View> r : coverViews) {
+            android.view.View v = r.get();
+            if (v == null || !v.isShown() || v.getAlpha() < 0.5f) continue;
+            v.getLocationOnScreen(at);
+            if (at[0] + v.getWidth() <= left || at[0] >= right) continue;   // not across the column
+            // Only a panel coming up from underneath counts: one reaching past the column's foot.
+            // What the column merely sits on ends above that -- landscape's turn card, under the
+            // reset tile as it is under Maps' compass.
+            if (at[1] >= bottom || at[1] + v.getHeight() < bottom) continue;
+            edge = Math.min(edge, at[1]);
+        }
+        int visible = edge == Integer.MAX_VALUE ? -1 : Math.max(0, edge - top);
+        if (visible == tiles.visible) return;
+        tiles.visible = visible;
+        tiles.setClipBounds(visible < 0 ? null : new android.graphics.Rect(0, 0, tiles.getWidth(), visible));
+        if (NAV_TRACE) android.util.Log.w("UA", "NAVZOOM tiles " + (visible < 0 ? "clear" : "covered below " + visible + "px"));
     }
 
     /** One second tick: show the tiles only while the navigation screen is up. */
@@ -1571,23 +2006,30 @@ public final class Shapes {
                             + " navUp=" + navUp + " tiles=" + (navTiles != null)
                             + " tries=" + navAttachTries
                             + (decor != null ? " decor=" + decor.getWidth() + "x" + decor.getHeight() : ""));
-                if (!NAV_ZOOM_BUTTONS && navTiles == null) { reschedule(); return; }  // nothing to do
+                // Power Saving Options: lower frame rate in navigation, auto-switch when idle.
+                PowerSaving.navTick(decor, navUp);
+                boolean power = PowerSaving.navButton();
+                boolean any = NAV_ZOOM_BUTTONS || power;
+                if (!any && navTiles == null) { reschedule(); return; }  // nothing to do
                 boolean guidance = (android.os.SystemClock.uptimeMillis() - navCamAt) < 3000L;
-                if (navUp && NAV_ZOOM_BUTTONS && decor != null) {
+                if (navUp && any && decor != null) {
                     // Maps does not recreate the navigation Activity on rotation,
-                    // so the DecorView and our margins survive it. Rebuild.
-                    if (navTiles != null && decor.getWidth() > 0
-                            && (decor.getWidth() > decor.getHeight()) != navLandscape) {
+                    // so the DecorView and our margins survive it. Rebuild -- and when
+                    // a switch adds or removes tiles.
+                    if (navTiles != null && ((decor.getWidth() > 0
+                            && (decor.getWidth() > decor.getHeight()) != navLandscape)
+                            || navTilesZoom != NAV_ZOOM_BUTTONS || navTilesPower != power)) {
                         android.view.ViewParent p = navTiles.getParent();
                         if (p instanceof android.view.ViewGroup) ((android.view.ViewGroup) p).removeView(navTiles);
                         navTiles = null;                    // keep navZoom: the override still stands
                     }
                     attachTiles(decor);
+                    if (navTiles != null) findCovers(decor);
                 } else if (navTiles != null) {
                     // Guidance still live but no usable window = picture-in-picture:
                     // take the tiles away without dropping the user's zoom, so it
                     // is still there when the full screen comes back.
-                    if (guidance && NAV_ZOOM_BUTTONS) hideTiles();
+                    if (guidance && any) hideTiles();
                     else detachTiles();                     // nav ended, or toggle off
                 }
             } catch (Throwable t) { if (NAV_TRACE) android.util.Log.w("UA", "NAVZOOM tick " + t); }
@@ -1597,7 +2039,7 @@ public final class Shapes {
             // Fast while guidance is live so a retry (badge not laid out yet)
             // costs ~150ms, not a second; slow when idle so it stays cheap.
             long ms = (android.os.SystemClock.uptimeMillis() - navCamAt) < 3000L ? 150L : 1000L;
-            try { new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, ms); } catch (Throwable t) { }
+            try { MAIN.removeCallbacks(this); MAIN.postDelayed(this, ms); } catch (Throwable t) { }
         }
     }
 
@@ -1638,7 +2080,7 @@ public final class Shapes {
     static void startNavTicker() {
         if (navTickerStarted) return;
         navTickerStarted = true;
-        try { new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new NavTicker(), 1500); }
+        try { MAIN.removeCallbacks(TICKER); MAIN.postDelayed(TICKER, 1500); }
         catch (Throwable t) { navTickerStarted = false; }
     }
 

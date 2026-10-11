@@ -1,3 +1,179 @@
+## [2.2.3](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.2...v2.2.3) (2026-10-11)
+
+### 🐛 Bug Fixes
+
+* customization menu in waze (switch the waze patches on and off from the side menu) ([456c27c](https://github.com/bearinmindcat/morphe-patches/commit/456c27c7e4829cdcb60d8a398860b668fce6d4d3))
+
+## [2.2.2](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.1...v2.2.2) (2026-10-11)
+
+### 🐛 Bug Fixes
+
+* map skin & black night map are skipped when patching with morphe manager so waze can't crash ([7fef96a](https://github.com/bearinmindcat/morphe-patches/commit/7fef96ab5c10fdf1a510dfb8f8fd665e9c1ca68c))
+
+## [2.2.1](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.0...v2.2.1) (2026-10-11)
+
+### 🐛 Bug Fixes
+
+* waze no longer crashes (map skin off by default, this was the cause lmfao) ([2b9aa52](https://github.com/bearinmindcat/morphe-patches/commit/2b9aa52062d76dafed5835d800b2f76487a6b76d))
+
+## [2.2.0](https://github.com/bearinmindcat/morphe-patches/compare/v2.1.0...v2.2.0) (2026-10-11)
+
+### ✨ New Features
+
+* adding alltrails patches ([8acb753](https://github.com/bearinmindcat/morphe-patches/commit/8acb75369f6d9bd5238609bcf58ea24d3c18240a))
+
+## [2.1.0](https://github.com/bearinmindcat/morphe-patches/compare/v2.0.0...v2.1.0) (2026-10-11)
+
+### ✨ New Features
+
+* added more misc waze features (for telemetry) & other misc items ([d56e9fe](https://github.com/bearinmindcat/morphe-patches/commit/d56e9fefd2d9d7e8c2e60cfec3b4ca512745df00))
+
+## [2.0.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.13...v2.0.0) (2026-10-11)
+
+### ⚠ BREAKING CHANGES
+
+* the Customization screen is reorganised into sections, each with its own page, and the account sheet gains a Waze Features row; together with the new Waze patches the bundle is no longer a Google Maps-only source.
+
+### ✨ New Features
+
+* add waze patches for waze apk ([0b091ad](https://github.com/bearinmindcat/morphe-patches/commit/0b091adbf5fb89659285b30b41599e97fd8f90e9))
+* added waze features to google maps ([880da80](https://github.com/bearinmindcat/morphe-patches/commit/880da80a2ebed18e01e6d229b66f14cc8b763e71))
+
+## [1.7.13](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.12...v1.7.13) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* directions to Home, Work and your own labels; issue [#36](https://github.com/bearinmindcat/morphe-patches/issues/36) ([9827770](https://github.com/bearinmindcat/morphe-patches/commit/98277703504fd6bccbc62f91555115407cad2528))
+* show local saved places on the map with a hide switch per list; issue [#36](https://github.com/bearinmindcat/morphe-patches/issues/36) ([7b82e80](https://github.com/bearinmindcat/morphe-patches/commit/7b82e807c3af4bf5aa6be636dd2118427a53efe7))
+
+## [1.7.12](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.11...v1.7.12) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* Home, Work and your own labels work in Maps' search and Add label; issue [#36](https://github.com/bearinmindcat/morphe-patches/issues/36) ([a504eab](https://github.com/bearinmindcat/morphe-patches/commit/a504eab1af955c58a758a99d7bedc8199212eed1))
+
+## [1.7.11](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.10...v1.7.11) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* choose microg Services or Google Play Services location in both apps ([1e7c8a5](https://github.com/bearinmindcat/morphe-patches/commit/1e7c8a5681249794a21d46f93e76e66a7edb76f0))
+
+## [1.7.10](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.9...v1.7.10) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* location sharing settings, notice and my location button in microG Maps; issue [#30](https://github.com/bearinmindcat/morphe-patches/issues/30) ([bd6a34a](https://github.com/bearinmindcat/morphe-patches/commit/bd6a34a25451666d61b121f17c1894a303b18306))
+
+## [1.7.9](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.8...v1.7.9) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* Customization and the other added screens open on root mount installs; issue [#25](https://github.com/bearinmindcat/morphe-patches/issues/25) ([00ddf32](https://github.com/bearinmindcat/morphe-patches/commit/00ddf32177525aa99b1ac9bb4db0f492055c4404))
+
+## [1.7.8](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.7...v1.7.8) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* my location no longer crashes microG Maps when location is off; issue [#27](https://github.com/bearinmindcat/morphe-patches/issues/27) ([a1d74bb](https://github.com/bearinmindcat/morphe-patches/commit/a1d74bbd53ad9d4e0d78fdb5768fba9f8c133c38))
+
+## [1.7.7](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.6...v1.7.7) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* pick any music app as the default media app in navigation; issue [#9](https://github.com/bearinmindcat/morphe-patches/issues/9) ([e831ff1](https://github.com/bearinmindcat/morphe-patches/commit/e831ff186a4660978eae26076bd2bf8df8b9bb12))
+
+## [1.7.6](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.5...v1.7.6) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* import google takeout saved lists (csv files or the whole zip, several at once); issue [#23](https://github.com/bearinmindcat/morphe-patches/issues/23) ([991db7f](https://github.com/bearinmindcat/morphe-patches/commit/991db7f397083bb6ff63ca8ed0acc742fe346bbc))
+
+## [1.7.5](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.4...v1.7.5) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* location sharing no longer crashes microG Maps; issue [#30](https://github.com/bearinmindcat/morphe-patches/issues/30) ([89f82cd](https://github.com/bearinmindcat/morphe-patches/commit/89f82cd87ed8f82463c5d90897b1a0505849928c))
+
+## [1.7.4](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.3...v1.7.4) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* pull from google account in ungoogled maps' local saved too ([b5e4b94](https://github.com/bearinmindcat/morphe-patches/commit/b5e4b940e8a11f7e3fadfd6d6279a2b8f17f935e))
+
+## [1.7.3](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.2...v1.7.3) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* local saved in microG Maps, with pull from Google account ([c6b8d13](https://github.com/bearinmindcat/morphe-patches/commit/c6b8d13c94d12b10fb50527680e6e0440cd0731a))
+
+## [1.7.2](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.1...v1.7.2) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* power saving options has its own row on the account sheet ([b30ab45](https://github.com/bearinmindcat/morphe-patches/commit/b30ab4502ec2dddb2b4a056906c7e21de5f67e53))
+
+## [1.7.1](https://github.com/bearinmindcat/morphe-patches/compare/v1.7.0...v1.7.1) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* account picture stays round inside its ring ([54b9f9f](https://github.com/bearinmindcat/morphe-patches/commit/54b9f9f745783799483c09fa968778ad32f97d9c))
+* microG Maps no longer crashes or freezes at start ([c7d4723](https://github.com/bearinmindcat/morphe-patches/commit/c7d472383ff4d196fefa3bb0f7abf50995546ddd))
+* splash screen shows the app's own icon ([b2d512e](https://github.com/bearinmindcat/morphe-patches/commit/b2d512e655db74a34d8564e69283d07841cf63bb))
+
+## [1.6.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.5.1...v1.6.0) (2026-10-07)
+
+### ✨ New Features
+
+* add microG Maps (separate app that signs in through MicroG-RE) ([78d3edc](https://github.com/bearinmindcat/morphe-patches/commit/78d3edcac5f9fd458f87216d8f84197b0c5e3a97))
+* give microG Maps its own icon ([920a8ad](https://github.com/bearinmindcat/morphe-patches/commit/920a8ad26013ac3fdfa8805bed765d3f436c4a10))
+
+## [1.5.1](https://github.com/bearinmindcat/morphe-patches/compare/v1.5.0...v1.5.1) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* merge related patches into fewer patches (33 to 21) ([871e40b](https://github.com/bearinmindcat/morphe-patches/commit/871e40b8ba3e2ace5ef2c393aa79c2593746a1ff))
+
+## [1.5.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.4.4...v1.5.0) (2026-10-07)
+
+### ✨ New Features
+
+* add power saving options (open without locking, idle switch, speedometer, lower frame rate, black map); issue [#22](https://github.com/bearinmindcat/morphe-patches/issues/22), [#26](https://github.com/bearinmindcat/morphe-patches/issues/26) ([3ce8b9d](https://github.com/bearinmindcat/morphe-patches/commit/3ce8b9df60dd458234d1b1660e64899edea1e277))
+
+## [1.4.4](https://github.com/bearinmindcat/morphe-patches/compare/v1.4.3...v1.4.4) (2026-10-06)
+
+### 🐛 Bug Fixes
+
+* 120 refresh rate now keeps navigation smooth; issue [#21](https://github.com/bearinmindcat/morphe-patches/issues/21) ([f323173](https://github.com/bearinmindcat/morphe-patches/commit/f32317373b574bbe89eb45964bac18c5addb0090))
+
+## [1.4.3](https://github.com/bearinmindcat/morphe-patches/compare/v1.4.2...v1.4.3) (2026-10-06)
+
+### 🐛 Bug Fixes
+
+* customization screen no longer removes other account menu rows; issue [#24](https://github.com/bearinmindcat/morphe-patches/issues/24) ([269e0ef](https://github.com/bearinmindcat/morphe-patches/commit/269e0ef335990d713c46ff49ddf5d8cc4d8f5de6))
+
+## [1.4.2](https://github.com/bearinmindcat/morphe-patches/compare/v1.4.1...v1.4.2) (2026-10-06)
+
+### 🐛 Bug Fixes
+
+* customization and other screens no longer crash on android 10; issue [#8](https://github.com/bearinmindcat/morphe-patches/issues/8) ([9bac165](https://github.com/bearinmindcat/morphe-patches/commit/9bac165b01a94c97699376b692c46def333dfc89))
+
+## [1.4.1](https://github.com/bearinmindcat/morphe-patches/compare/v1.4.0...v1.4.1) (2026-10-06)
+
+### 🐛 Bug Fixes
+
+* black theme no longer overrides the theme picked in maps settings; issue [#11](https://github.com/bearinmindcat/morphe-patches/issues/11) ([5d9df9e](https://github.com/bearinmindcat/morphe-patches/commit/5d9df9e14f7af9662ad2fa1948e8d7167a9c8883))
+
+## [1.4.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.3.0...v1.4.0) (2026-10-06)
+
+### 🐛 Bug Fixes
+
+* fixed issue with zoom buttons floating over pulled up menu ([65878f1](https://github.com/bearinmindcat/morphe-patches/commit/65878f16d29c0c55933a3c8eaa6c2f723f0d00a4))
+* fixed layout for landscape zoom control icons ([5e8783c](https://github.com/bearinmindcat/morphe-patches/commit/5e8783c9f8c6809a78f45c2981be1fe9b03b5a96))
+
+### ✨ New Features
+
+* add hide ai toggle (know before you go & gemini review summaries); issue [#19](https://github.com/bearinmindcat/morphe-patches/issues/19) ([efc79d7](https://github.com/bearinmindcat/morphe-patches/commit/efc79d71a2fe72b581724a0c54e120024934cc9c))
+
 ## [1.3.0](https://github.com/bearinmindcat/morphe-patches/compare/v1.2.0...v1.3.0) (2026-09-30)
 
 ### ✨ New Features

@@ -7,11 +7,13 @@ import app.morphe.patcher.methodCall
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.patch.resourcePatch
 import app.morphe.patcher.string
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35c
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rc
+import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
@@ -22,6 +24,7 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.reference.ImmutableMethodReference
 import org.ungoogled.patches.shared.addInstructionsAtLabel
+import org.w3c.dom.Element
 
 /** org.ungoogled.ui.Shapes, the runtime half of the UI patches (extensions/extension). */
 internal const val SHAPES = "Lorg/ungoogled/ui/Shapes;"
@@ -99,6 +102,78 @@ internal val activityContextHookPatch = bytecodePatch(
     }
 }
 
+/** org.ungoogled.ui.Screens: opens the extension's screens, inside a host when they are not declared. */
+private const val SCREENS = "Lorg/ungoogled/ui/Screens;"
+/** androidx.core's AppComponentFactory, which Maps' manifest names: it creates every Activity of the app. */
+private const val COMPONENT_FACTORY = "androidx.core.app.CoreComponentFactory"
+/** Stock Maps' open-source licences screen, Screens.HOST. */
+private const val SCREEN_HOST = "com.google.android.libraries.social.licenses.LicenseActivity"
+
+/**
+ * The screen host works from stock Maps' manifest, so it relies on two things in it: the
+ * component factory it names, and the licences screen declared as a plain Activity private
+ * to the app.
+ */
+private val screenHostManifestPatch = resourcePatch(
+    description = "Checks the component factory and the screen host in Maps' manifest.",
+) {
+    execute {
+        document("AndroidManifest.xml").use { manifest ->
+            val application = manifest.getElementsByTagName("application").item(0) as Element
+            val factory = application.getAttribute("android:appComponentFactory")
+            if (factory != COMPONENT_FACTORY) throw PatchException("the manifest's component factory is '$factory', not $COMPONENT_FACTORY")
+            val activities = manifest.getElementsByTagName("activity")
+            val host = (0 until activities.length).map { activities.item(it) as Element }
+                .singleOrNull { it.getAttribute("android:name") == SCREEN_HOST }
+                ?: throw PatchException("the manifest no longer declares $SCREEN_HOST")
+            val unexpected = listOf(
+                "android:process", "android:launchMode", "android:taskAffinity", "android:enabled",
+                "android:noHistory", "android:excludeFromRecents", "android:screenOrientation", "android:permission",
+            ).filter(host::hasAttribute)
+            if (host.getAttribute("android:exported") != "false" || unexpected.isNotEmpty()) {
+                throw PatchException("$SCREEN_HOST is no longer a plain private Activity ($unexpected)")
+            }
+        }
+    }
+}
+
+/**
+ * Root "mount" installs (issue #25): Morphe Manager bind-mounts the patched APK over stock
+ * Maps' base.apk, and Android keeps the manifest it parsed from the stock one, so none of the
+ * extension's Activities exist there. Screens then opens them through stock Maps' licences
+ * screen, with an action naming the screen, and the app's component factory -- hooked here --
+ * creates the extension's class in the host's place:
+ *
+ *     instantiateActivity(classLoader, className, intent)
+ *  -> className = Screens.activityFor(className, intent), then as before
+ *
+ * Any other Activity, the licences screen opened by Maps included, keeps its class.
+ */
+internal val screenHostPatch = bytecodePatch(
+    description = "Opens the extension's screens inside an Activity stock Maps declares, for root mount installs.",
+) {
+    dependsOn(sharedExtensionPatch, screenHostManifestPatch)
+
+    execute {
+        val factory = "L${COMPONENT_FACTORY.replace('.', '/')};"
+        val method = mutableClassDefBy(factory).methods.singleOrNull {
+            it.name == "instantiateActivity" && it.returnType == "Landroid/app/Activity;" &&
+                it.parameterTypes.map(CharSequence::toString) ==
+                listOf("Ljava/lang/ClassLoader;", "Ljava/lang/String;", "Landroid/content/Intent;")
+        } ?: throw PatchException("$factory->instantiateActivity not found")
+        if (method.implementation!!.instructions.first().location.labels.isNotEmpty()) {
+            throw PatchException("instantiateActivity starts at a branch target")
+        }
+        method.addInstructions(
+            0,
+            """
+                invoke-static { p2, p3 }, $SCREENS->activityFor(Ljava/lang/String;Landroid/content/Intent;)Ljava/lang/String;
+                move-result-object p2
+            """,
+        )
+    }
+}
+
 /**
  * CommonGoogleMapsApplication.attachBaseContext (Maps' own trace label names
  * it): the Application base class, the first app code to run in every one of
@@ -153,6 +228,47 @@ internal val applicationStartHookPatch = bytecodePatch(
  * Never applied to the extension itself: its shims call the real framework
  * methods, and rewriting those calls would make them call themselves.
  */
+/**
+ * Avatars -- a signed-in account's picture, drawn inside Google's coloured account ring, which
+ * is drawn round. Squared by Rectangle Shapes, the picture sat in the ring as a square, so the
+ * code that makes avatars round keeps its circles; its colours still go through the shims. The
+ * picture is cut round by a circle crop and the letter avatar painted by a monogram painter,
+ * both found by what they draw (see [drawsAvatar]); the avatar view keeps its round clip.
+ */
+private val ROUND_AVATARS = setOf(
+    "Lcom/google/android/libraries/onegoogle/account/disc/AvatarView;",
+    "Lcom/google/android/libraries/onegoogle/account/disc/SimpleAvatarView;",
+)
+
+private fun MethodReference.isCall(owner: String, name: String, parameters: String) =
+    definingClass == owner && this.name == name && parameterTypes.joinToString("") == parameters
+
+private enum class AvatarPainter { CIRCLE_CROP, MONOGRAM }
+
+/**
+ * The circle crop (a new bitmap: a circle drawn as a mask, then the picture drawn into it with
+ * SRC_IN) and the monogram painter (a circle with a centred letter, drawn onto a new bitmap).
+ */
+private fun avatarPainter(classDef: ClassDef): AvatarPainter? {
+    for (method in classDef.methods) {
+        val calls = method.implementation?.instructions
+            ?.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }.orEmpty()
+        fun has(owner: String, name: String, parameters: String) = calls.any { it.isCall(owner, name, parameters) }
+        val canvas = "Landroid/graphics/Canvas;"
+        val paint = "Landroid/graphics/Paint;"
+        if (!has("Landroid/graphics/Bitmap;", "createBitmap", "IILandroid/graphics/Bitmap\$Config;") ||
+            !has(canvas, "drawCircle", "FFF$paint")
+        ) continue
+        if (has(paint, "setXfermode", "Landroid/graphics/Xfermode;") && has(canvas, "drawBitmap", "Landroid/graphics/Bitmap;FF$paint")) {
+            return AvatarPainter.CIRCLE_CROP
+        }
+        if (has(paint, "setTextAlign", "Landroid/graphics/Paint\$Align;") && has(canvas, "drawText", "Ljava/lang/String;FF$paint")) {
+            return AvatarPainter.MONOGRAM
+        }
+    }
+    return null
+}
+
 internal val shapeShimsPatch = bytecodePatch(
     description = "Routes framework shape and colour calls through the UI extension.",
 ) {
@@ -169,7 +285,7 @@ internal val shapeShimsPatch = bytecodePatch(
         val paint = "Landroid/graphics/Paint;"
 
         // (owner, method, parameters) -- the shim takes (owner, parameters...), same name, void.
-        val virtuals = listOf(
+        val shapeVirtuals = listOf(
             Triple(gd, "setCornerRadius", "F"), Triple(gd, "setCornerRadii", "[F"), Triple(gd, "setShape", "I"),
             Triple(path, "addRoundRect", rectF + "FF" + dir), Triple(path, "addRoundRect", rectF + "[F" + dir),
             Triple(path, "addRoundRect", "FFFFFF$dir"), Triple(path, "addRoundRect", "FFFF[F$dir"),
@@ -178,6 +294,8 @@ internal val shapeShimsPatch = bytecodePatch(
             Triple(canvas, "drawCircle", "FFF$paint"), Triple(canvas, "drawOval", rectF + paint), Triple(canvas, "drawOval", "FFFF$paint"),
             Triple(outline, "setRoundRect", "IIIIF"), Triple(outline, "setRoundRect", rect + "F"),
             Triple(outline, "setOval", "IIII"), Triple(outline, "setOval", rect),
+        )
+        val virtuals = shapeVirtuals + listOf(
             // Black theme: literal colours handed to the framework
             Triple(gd, "setColor", "I"), Triple("Landroid/graphics/drawable/ColorDrawable;", "setColor", "I"),
             Triple(paint, "setColor", "I"), Triple("Landroid/view/View;", "setBackgroundColor", "I"),
@@ -208,6 +326,8 @@ internal val shapeShimsPatch = bytecodePatch(
             val ps = params(p)
             rules[key(owner, name, ps, "V")] = ImmutableMethodReference(SHAPES, name, listOf(owner) + ps, "V")
         }
+        val shapeKeys = shapeVirtuals.map { (owner, name, p) -> key(owner, name, params(p), "V") }.toSet()
+        val colourRules = rules.filterKeys { it !in shapeKeys }
         val csl = "Landroid/content/res/ColorStateList;"
         val staticRules = mapOf(
             key(csl, "valueOf", listOf("I"), csl) to ImmutableMethodReference(SHAPES, "valueOf", listOf("I"), csl),
@@ -226,12 +346,20 @@ internal val shapeShimsPatch = bytecodePatch(
         var classes = 0
         val work = mutableListOf<Pair<String, Method>>()
         val reparent = mutableListOf<String>()
+        val roundAvatars = ROUND_AVATARS.toMutableSet()
+        val painters = mutableSetOf<AvatarPainter>()
+        classDefForEach { classDef ->
+            if (classDef.type.startsWith("Lorg/ungoogled/")) return@classDefForEach
+            avatarPainter(classDef)?.let { painters += it; roundAvatars += classDef.type }
+        }
+        if (painters.size != AvatarPainter.entries.size) throw PatchException("avatar circle crop or monogram painter not found: $painters")
         classDefForEach { classDef ->
             if (classDef.type.startsWith("Lorg/ungoogled/")) return@classDefForEach
             if (classDef.superclass in shapeSubclasses) reparent += classDef.type
+            val classRules = if (classDef.type in roundAvatars) colourRules else rules
             for (method in classDef.methods) {
                 val instructions = method.implementation?.instructions ?: continue
-                if (instructions.any { insn -> rewriteKind(insn, rules, staticRules, shapeSubclasses, ctorColourArgs) != null }) {
+                if (instructions.any { insn -> rewriteKind(insn, classRules, staticRules, shapeSubclasses, ctorColourArgs) != null }) {
                     work += classDef.type to method
                 }
             }
@@ -247,7 +375,7 @@ internal val shapeShimsPatch = bytecodePatch(
             val mutableMethod = mutableClass.methods.first {
                 it.name == method.name && it.parameterTypes == method.parameterTypes && it.returnType == method.returnType
             }
-            sites += rewriteMethod(mutableMethod, rules, staticRules, shapeSubclasses, ctorColourArgs)
+            sites += rewriteMethod(mutableMethod, if (type in roundAvatars) colourRules else rules, staticRules, shapeSubclasses, ctorColourArgs)
             classes++
         }
         if (sites == 0) throw PatchException("no framework shape or colour calls found to reroute")
@@ -273,6 +401,7 @@ internal val shapeShimsPatch = bytecodePatch(
                     if (insn.opcode == Opcode.INVOKE_SUPER || insn.opcode == Opcode.INVOKE_SUPER_RANGE) continue
                     val ref = (insn as? ReferenceInstruction)?.reference as? MethodReference ?: continue
                     val k = key(ref.definingClass, ref.name, ref.parameterTypes.map { it.toString() }, ref.returnType)
+                    if (classDef.type in roundAvatars && k in shapeKeys) continue
                     if (watched.containsMatchIn(k)) leftovers += "${classDef.type}->${method.name}: $k"
                 }
             }

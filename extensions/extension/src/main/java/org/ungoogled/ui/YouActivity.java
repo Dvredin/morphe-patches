@@ -6,7 +6,6 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.InputType;
 import android.text.format.DateUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -128,18 +127,25 @@ public final class YouActivity extends UiScreen {
         SavedPlaces.refreshButtons();
     }
 
+    /** The Labeled page: Home, Work and the user's own labels (where Maps' search sends a Home that is not set). */
+    static Intent labeledIntent(android.content.Context c) {
+        Intent i = Screens.intent(c, YouActivity.class).putExtra(EXTRA_PAGE, LABELED);
+        if (!(c instanceof android.app.Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return i;
+    }
+
     /** One of the user's lists' page (after a place is added to it from Maps' "Add a place"). */
     static Intent listIntent(android.content.Context c, String list) {
-        return new Intent(c, YouActivity.class).putExtra(EXTRA_PAGE, LIST).putExtra(EXTRA_LIST, list);
+        return Screens.intent(c, YouActivity.class).putExtra(EXTRA_PAGE, LIST).putExtra(EXTRA_LIST, list);
     }
 
     private void go(String to, String list) {
-        startActivity(new Intent(this, YouActivity.class).putExtra(EXTRA_PAGE, to).putExtra(EXTRA_LIST, list));
+        startActivity(Screens.intent(this, YouActivity.class).putExtra(EXTRA_PAGE, to).putExtra(EXTRA_LIST, list));
     }
 
     /** Your places, filtered: what the You page's search and filter chips open. */
     private void places(int withKind, String withList, String withCategory, boolean withSearch) {
-        startActivity(new Intent(this, YouActivity.class).putExtra(EXTRA_PAGE, PLACES).putExtra(EXTRA_KIND, withKind)
+        startActivity(Screens.intent(this, YouActivity.class).putExtra(EXTRA_PAGE, PLACES).putExtra(EXTRA_KIND, withKind)
                 .putExtra(EXTRA_SAVED_LIST, withList).putExtra(EXTRA_CATEGORY, withCategory).putExtra(EXTRA_SEARCH, withSearch));
     }
 
@@ -157,22 +163,11 @@ public final class YouActivity extends UiScreen {
     // ---- the You page ------------------------------------------------------------------
 
     private void renderYou() {
-        body.addView(sectionTitle("Your recent places", "From your Maps history and saves", null, null));
-        body.addView(filterRow(true));
-        List<Item> recent = items(0, null, null, "");
-        if (recent.isEmpty()) {
-            body.addView(hint(HistoryStore.enabled(this)
-                    ? "Places you look at, get directions to, call, share or save show up here. They stay on this phone."
-                    : "Remembering the places you look at is off. Turn it on below."));
+        renderAccount();
+        if (!Shapes.microgPatched()) {
+            body.addView(bandView());
+            renderRecent();
         }
-        for (int i = 0; i < Math.min(3, recent.size()); i++) body.addView(placeRow(recent.get(i)));
-        body.addView(pill("See all", v -> places(0, null, null, false)));
-        // What fills this section, and forgetting it: Maps keeps these in the Google account's
-        // settings; here they sit with the places they are about.
-        body.addView(switchRow(drawable(GS_HISTORY, accent(), new PathIcon(PathIcon.TIMELINE, accent())),
-                "Remember places I look at", HistoryStore.enabled(this), on -> { HistoryStore.setEnabled(this, on); render(); }));
-        body.addView(listLikeRow(drawable(GS_DELETE, accent(), new PathIcon(PathIcon.ADD, accent())),
-                "Clear recent places", null, v -> confirmClear(), null));
 
         body.addView(bandView());
         body.addView(sectionTitle("Your saves", null, "New list", v ->
@@ -190,10 +185,10 @@ public final class YouActivity extends UiScreen {
             TextView explore = label("Explore Timeline", 14, accent(), textMedium);
             explore.setGravity(Gravity.CENTER);
             explore.setPadding(dp(12), dp(14), dp(12), dp(14));
-            explore.setOnClickListener(v -> startActivity(new Intent(this, TimelineActivity.class)));
+            explore.setOnClickListener(v -> startActivity(Screens.intent(this, TimelineActivity.class)));
             body.addView(explore, new LinearLayout.LayoutParams(-1, -2));
             body.addView(shortcut(new PathIcon(PathIcon.TIMELINE, onTonal()), "Timeline",
-                    v -> startActivity(new Intent(this, TimelineActivity.class))));
+                    v -> startActivity(Screens.intent(this, TimelineActivity.class))));
         }
 
         body.addView(bandView());
@@ -202,7 +197,78 @@ public final class YouActivity extends UiScreen {
                 null /* "A backup file, or KML for other map apps" */, v -> exportMenu(), null));
         body.addView(listLikeRow(new PathIcon(PathIcon.UPLOAD, accent()), "Import",
                 null /* "A backup, KML, or Google Takeout's Saved Places.json" */, v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
-                        .addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), IMPORT), null));
+                        .addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), IMPORT), null));
+    }
+
+    /**
+     * A copy of the Google account's lists to keep on the phone. microG Maps saves to the account,
+     * as Maps does, and shows this in place of the recent places it keeps no history of; Ungoogled
+     * Maps shows it too, so the two pages match, though it is never signed in to an account.
+     */
+    private void renderAccount() {
+        body.addView(sectionTitle("Your Google account", Shapes.microgPatched()
+                ? "Saving stays with your account. Pull copies its saved lists here, to keep on this phone."
+                : "Pull copies the saved lists of a Google account signed in to Maps. Ungoogled Maps saves on this phone only.",
+                null, null));
+        long at = getSharedPreferences(Shapes.PREFS, MODE_PRIVATE).getLong(AccountSaves.KEY_PULLED_AT, 0);
+        body.addView(listLikeRow(new PathIcon(PathIcon.DOWNLOAD, accent()), "Pull from Google account",
+                at == 0 ? null : System.currentTimeMillis() - at < DateUtils.MINUTE_IN_MILLIS ? "Last pulled just now"
+                        : "Last pulled " + DateUtils.getRelativeTimeSpanString(at, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS),
+                v -> pullFromAccount(), null));
+    }
+
+    private boolean pulling;
+
+    /** Reads the account's lists off the phone (no network) and adds what is new here. */
+    private void pullFromAccount() {
+        if (pulling) return;
+        pulling = true;
+        new Thread(() -> {
+            String done = null, problem = null;
+            try {
+                AccountSaves.Result r = AccountSaves.pull(this);
+                if (r.places == 0) {
+                    problem = Shapes.microgPatched()
+                            ? "Your account's saved lists aren't on this phone yet. Sign in, open Saved in Maps once, then pull again."
+                            : "Ungoogled Maps isn't signed in to a Google account, so there are no account lists to pull. "
+                                    + "To bring your lists over, use Import with Google Takeout's Saved Places.json.";
+                } else {
+                    done = "Pulled " + count(r.places) + (r.lists == 0 ? "" : " from " + (r.lists == 1 ? "1 list" : r.lists + " lists"))
+                            + (r.added == 0 ? ", nothing new" : r.added == 1 ? ", 1 new" : ", " + r.added + " new");
+                }
+            } catch (Throwable t) {
+                android.util.Log.w("UA", "Pull from Google account", t);
+                problem = "Couldn't read your account's saved lists: " + t.getMessage();
+            }
+            String ok = done, failed = problem;
+            runOnUiThread(() -> {
+                pulling = false;
+                if (isFinishing() || isDestroyed()) return;
+                if (ok != null) Toast.makeText(this, ok, Toast.LENGTH_LONG).show();
+                else new AlertDialog.Builder(this, SavedPlaces.dialogTheme(this))
+                        .setTitle("Nothing to pull").setMessage(failed).setPositiveButton("OK", null).show();
+                render();
+            });
+        }, "UA-pull").start();
+    }
+
+    private void renderRecent() {
+        body.addView(sectionTitle("Your recent places", "From your Maps history and saves", null, null));
+        body.addView(filterRow(true));
+        List<Item> recent = items(0, null, null, "");
+        if (recent.isEmpty()) {
+            body.addView(hint(HistoryStore.enabled(this)
+                    ? "Places you look at, get directions to, call, share or save show up here. They stay on this phone."
+                    : "Remembering the places you look at is off. Turn it on below."));
+        }
+        for (int i = 0; i < Math.min(3, recent.size()); i++) body.addView(placeRow(recent.get(i)));
+        body.addView(pill("See all", v -> places(0, null, null, false)));
+        // What fills this section, and forgetting it: Maps keeps these in the Google account's
+        // settings; here they sit with the places they are about.
+        body.addView(switchRow(drawable(GS_HISTORY, accent(), new PathIcon(PathIcon.TIMELINE, accent())),
+                "Remember places I look at", HistoryStore.enabled(this), on -> { HistoryStore.setEnabled(this, on); render(); }));
+        body.addView(listLikeRow(drawable(GS_DELETE, accent(), new PathIcon(PathIcon.ADD, accent())),
+                "Clear recent places", null, v -> confirmClear(), null));
     }
 
     /** The lists, most recently used first (by their newest place), empty ones last. */
@@ -620,8 +686,10 @@ public final class YouActivity extends UiScreen {
         if (isList) {
             LinearLayout pills = new LinearLayout(this);
             pills.setPadding(dp(20), dp(20), dp(20), 0);
-            pills.addView(tonalPill(ADD_PLACE, "Add", v -> SavedPlaces.addPlaceTo(this, listId)));
-            pills.addView(tonalPill(EDIT, "Edit", v -> editList(title)), leftGap(8, 0));
+            // microG Maps adds places to lists in Maps, on the account; there is no local Add.
+            boolean add = !Shapes.microgPatched();
+            if (add) pills.addView(tonalPill(ADD_PLACE, "Add", v -> SavedPlaces.addPlaceTo(this, listId)));
+            pills.addView(tonalPill(EDIT, "Edit", v -> editList(title)), add ? leftGap(8, 0) : new LinearLayout.LayoutParams(-2, -2));
             body.addView(pills);
         }
         body.addView(bandView());
@@ -697,7 +765,7 @@ public final class YouActivity extends UiScreen {
         n.setPadding(0, dp(3), 0, 0);
         lines.addView(n);
         if (!Float.isNaN(p.rating)) lines.addView(ratingLine(p.rating, p.reviews));
-        String dist = here != null ? distance(meters(here, p)) : null;
+        String dist = here != null && p.located() ? distance(meters(here, p)) : null;
         String line = p.category.isEmpty() ? (dist != null ? dist : "") : dist != null ? p.category + " · " + dist : p.category;
         if (!line.isEmpty()) lines.addView(secondLine(line));
         if (!p.note.isEmpty()) {
@@ -782,7 +850,9 @@ public final class YouActivity extends UiScreen {
     /** [places] come newest first; Distance puts the nearest first, Editor's order the first added. */
     private List<SavedStore.Place> sorted(List<SavedStore.Place> places, android.location.Location here) {
         List<SavedStore.Place> out = new ArrayList<>(places);
-        if (sort == 1 && here != null) out.sort((a, b) -> Float.compare(meters(here, a), meters(here, b)));
+        // Places without a position yet (from a Takeout list) last.
+        if (sort == 1 && here != null) out.sort((a, b) -> a.located() != b.located() ? (a.located() ? -1 : 1)
+                : a.located() ? Float.compare(meters(here, a), meters(here, b)) : 0);
         else if (sort == 2) java.util.Collections.reverse(out);
         return out;
     }
@@ -981,27 +1051,7 @@ public final class YouActivity extends UiScreen {
 
     /** Names [p]; [old] is the label being renamed, or null. "Home" and "Work" set those. */
     private void labelDialog(SavedStore.Place p, String old) {
-        EditText field = new EditText(this);
-        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        field.setHint("Label, like Gym");
-        if (old != null) field.setText(old);
-        FrameLayout box = new FrameLayout(this);
-        box.setPadding(dp(20), dp(8), dp(20), 0);
-        box.addView(field);
-        new AlertDialog.Builder(this, SavedPlaces.dialogTheme(this))
-                .setTitle(old != null ? "Rename label" : "Label " + name(p))
-                .setView(box)
-                .setPositiveButton("Save", (d, w) -> {
-                    String label = field.getText().toString().trim();
-                    if (label.isEmpty()) return;
-                    if (old != null) SavedStore.removeLabel(this, old);
-                    if (label.equalsIgnoreCase("home")) SavedStore.setHome(this, SavedStore.aliasOf(p));
-                    else if (label.equalsIgnoreCase("work")) SavedStore.setWork(this, SavedStore.aliasOf(p));
-                    else SavedStore.setLabel(this, label, p);
-                    render();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        SavedPlaces.labelDialog(this, p, old, label -> render());
     }
 
     // ---- place rows ---------------------------------------------------------------------------
@@ -1203,24 +1253,30 @@ public final class YouActivity extends UiScreen {
     private void listMenu(String id, String name) {
         if (name == null) return;
         List<String> names = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
         names.add("Open");
+        acts.add(() -> { if (!LIST.equals(page)) go(LIST, id); });
         names.add("Rename");
-        if (!SavedStore.isDefault(id)) names.add("Delete list");
+        acts.add(() -> SavedPlaces.newList(this, n -> { SavedStore.renameList(this, id, n); if (LIST.equals(page)) recreate(); else render(); }));
+        // Its places on Maps' map, with the list's icon (SavedOnMap).
+        boolean onMap = !SavedStore.hiddenOnMap.contains(id);
+        names.add(onMap ? "Hide on map" : "Show on map");
+        acts.add(() -> SavedStore.setOnMap(this, id, !onMap));
+        if (!SavedStore.isDefault(id)) {
+            names.add("Delete list");
+            acts.add(() -> new AlertDialog.Builder(this, SavedPlaces.dialogTheme(this))
+                    .setTitle("Delete " + name + "?")
+                    .setMessage("Its places stay in any other lists they are in.")
+                    .setPositiveButton("Delete", (d2, w) -> {
+                        SavedStore.deleteList(this, id);
+                        if (LIST.equals(page)) finish(); else render();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show());
+        }
         new AlertDialog.Builder(this, SavedPlaces.dialogTheme(this))
                 .setTitle(name)
-                .setItems(names.toArray(new String[0]), (d, which) -> {
-                    if (which == 0) { if (!LIST.equals(page)) go(LIST, id); }
-                    else if (which == 1) SavedPlaces.newList(this, n -> { SavedStore.renameList(this, id, n); if (LIST.equals(page)) recreate(); else render(); });
-                    else new AlertDialog.Builder(this, SavedPlaces.dialogTheme(this))
-                            .setTitle("Delete " + name + "?")
-                            .setMessage("Its places stay in any other lists they are in.")
-                            .setPositiveButton("Delete", (d2, w) -> {
-                                SavedStore.deleteList(this, id);
-                                if (LIST.equals(page)) finish(); else render();
-                            })
-                            .setNegativeButton("Cancel", null)
-                            .show();
-                })
+                .setItems(names.toArray(new String[0]), (d, which) -> acts.get(which).run())
                 .show();
     }
 
@@ -1260,22 +1316,63 @@ public final class YouActivity extends UiScreen {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (result != RESULT_OK || data == null || data.getData() == null) return;
+        if (result != RESULT_OK || data == null) return;
+        if (request == IMPORT) {
+            importChosen(data);
+            return;
+        }
         Uri uri = data.getData();
+        if (uri == null) return;
         try {
             if (request == EXPORT_JSON) SavedStore.exportJson(this, uri);
             else if (request == EXPORT_KML) SavedStore.exportKml(this, uri);
             else if (request == EXPORT_RECENT) SavedStore.exportRecentKml(this, uri);
-            if (request != IMPORT) {
-                Toast.makeText(this, "Exported", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            int added = SavedStore.importFile(this, uri);
-            Toast.makeText(this, added == 1 ? "Added 1 place" : "Added " + added + " places", Toast.LENGTH_SHORT).show();
-            render();
+            Toast.makeText(this, "Exported", Toast.LENGTH_SHORT).show();
         } catch (Throwable t) {
             Toast.makeText(this, "That didn't work: " + t.getMessage(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    /**
+     * The files picked for Import, several at once if wanted: Google Takeout's saved lists (a CSV
+     * each), its whole .zip, Saved Places.json, KML or a backup. Read off the main thread -- a
+     * Takeout .zip can be large.
+     */
+    private void importChosen(Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri u = clip.getItemAt(i).getUri();
+                if (u != null) uris.add(u);
+            }
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        if (uris.isEmpty()) return;
+        new Thread(() -> {
+            String title, message;
+            try {
+                SavedStore.Imported r = SavedStore.importFiles(this, uris);
+                title = r.places == 0 ? "Nothing new" : "Imported";
+                message = r.places == 0 ? "Everything in " + (r.files == 1 ? "that file" : "those files") + " is here already."
+                        : "Added " + count(r.places) + (r.lists == 0 ? "" : r.lists == 1 ? " and 1 list" : " and " + r.lists + " lists") + ".";
+                if (r.unlocated > 0) {
+                    message += "\n\n" + (r.unlocated == 1 ? "1 place has" : r.unlocated + " places have") + " no position yet: Google "
+                            + "Takeout's lists leave it out. Each place gets it the first time you open it in Maps; until then "
+                            + "it shows no distance, and Directions opens the place first.";
+                }
+            } catch (Throwable t) {
+                title = "That didn't work";
+                message = String.valueOf(t.getMessage());
+            }
+            String ti = title, m = message;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                render();
+                new AlertDialog.Builder(this, SavedPlaces.dialogTheme(this)).setTitle(ti).setMessage(m).setPositiveButton("OK", null).show();
+            });
+        }, "UA-import").start();
     }
 
     // ---- words ----------------------------------------------------------------------------

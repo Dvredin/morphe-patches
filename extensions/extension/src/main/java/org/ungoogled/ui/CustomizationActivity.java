@@ -7,7 +7,6 @@ import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.WindowInsets;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -29,6 +28,21 @@ public final class CustomizationActivity extends Activity {
     // neutral6 surface (#131314) / neutral90 text; Black theme = pure black surface.
     private static final int BG = 0xFFFFFFFF, TEXT = 0xFF1B1B1F, SUMMARY = 0xFF5F6368;
     private static final int BG_D = 0xFF131314, TEXT_D = 0xFFE3E3E3, SUMMARY_D = 0xFFC4C7C5;
+    /**
+     * Which page of this same screen: the main list; one of its sections (UI, Hide Telemetry,
+     * Misc Features); or a page with its own account sheet row (Power Saving Options, Waze Features).
+     */
+    static final String EXTRA_PAGE = "org.ungoogled.ui.page";
+    static final String PAGE_POWER = "power", PAGE_WAZE = "waze", PAGE_UI = "ui", PAGE_HIDE = "hide", PAGE_MISC = "misc";
+
+    private static String title(String page) {
+        if (PAGE_POWER.equals(page)) return "Power Saving Options";
+        if (PAGE_WAZE.equals(page)) return "Waze Features";
+        if (PAGE_UI.equals(page)) return "UI";
+        if (PAGE_HIDE.equals(page)) return "Hide Telemetry";
+        if (PAGE_MISC.equals(page)) return "Misc Features";
+        return "Customization";
+    }
     private boolean dark, black;
     private TextView proxySub;
 
@@ -52,6 +66,7 @@ public final class CustomizationActivity extends Activity {
     }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
+        Screens.prepare(this);
         super.onCreate(savedInstanceState);
         // Follow Maps' theme, not the system's: Maps decides dark/light from its own
         // settings_preference/dark_mode (ON | OFF | FOLLOW_SYSTEM), see Shapes.enforceDark.
@@ -59,7 +74,9 @@ public final class CustomizationActivity extends Activity {
         String darkMode = getSharedPreferences("settings_preference", MODE_PRIVATE).getString("dark_mode", "FOLLOW_SYSTEM");
         boolean systemNight = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         dark = black || "ON".equals(darkMode) || (!"OFF".equals(darkMode) && systemNight);
-        setTitle("Customization");
+        String page = getIntent().getStringExtra(EXTRA_PAGE);
+        String pageTitle = title(page);
+        setTitle(pageTitle);
         if (getActionBar() != null) getActionBar().hide();
         getWindow().getDecorView().setBackgroundColor(bg());
         getWindow().setStatusBarColor(bg());
@@ -69,8 +86,8 @@ public final class CustomizationActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(bg());
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets sb = insets.getInsets(WindowInsets.Type.systemBars());
-            v.setPadding(sb.left, sb.top, sb.right, sb.bottom);
+            int[] sb = Shapes.barInsets(insets, false);
+            v.setPadding(sb[0], sb[1], sb[2], sb[3]);
             return insets;
         });
 
@@ -78,7 +95,7 @@ public final class CustomizationActivity extends Activity {
         android.widget.FrameLayout header = new android.widget.FrameLayout(this);
         header.setPadding(dp(20), dp(20), dp(20), dp(12));
         TextView title = new TextView(this);
-        title.setText("Customization");
+        title.setText(pageTitle);
         title.setTextColor(text());
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         title.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
@@ -96,6 +113,57 @@ public final class CustomizationActivity extends Activity {
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(0, dp(4), 0, dp(24));
 
+        if (PAGE_POWER.equals(page)) buildPowerPage(body);
+        else if (PAGE_WAZE.equals(page)) buildWazePage(body);
+        else if (PAGE_UI.equals(page)) buildUiPage(body);
+        else if (PAGE_HIDE.equals(page)) buildHidePage(body);
+        else if (PAGE_MISC.equals(page)) buildMiscPage(body);
+        else buildMainPage(body);
+
+        ScrollView sv = new ScrollView(this);
+        sv.addView(body);
+        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        setContentView(root);
+    }
+
+    /** The main list: one row a section, each opening its own page, shown when any of its patches is present. */
+    private void buildMainPage(LinearLayout body) {
+        section(body, PAGE_UI, names(
+                Shapes.rectShapesPatched(), "Rectangle Shapes",
+                Shapes.blackThemePatched(), "Black theme",
+                Shapes.highRefreshPatched(), "120 refresh rate"));
+        section(body, PAGE_HIDE, names(
+                Shapes.hideAdsPatched(), "Sponsored content",
+                Shapes.hideExplorePatched(), "Explore sheet",
+                Shapes.hideTabsPatched(), "Bottom tabs",
+                Shapes.hideDirectoryPatched(), "Suggestions",
+                Shapes.hideAiPatched(), "AI"));
+        section(body, PAGE_MISC, names(
+                Shapes.navZoomPatched(), "Zoom controls in navigation",
+                Shapes.betterOfflinePatched(), "Better offline maps",
+                Shapes.locationSourcePatched(), "Location source",
+                Shapes.proxyPatched(), "Proxy"));
+    }
+
+    /** A section's row: its title, what it holds, and its page when tapped. Left out when it holds nothing. */
+    private void section(LinearLayout body, String page, String holds) {
+        if (holds == null) return;
+        LinearLayout r = rowBase(title(page), holds);
+        r.setOnClickListener(v -> startActivity(Screens.intent(this, CustomizationActivity.class).putExtra(EXTRA_PAGE, page)));
+        body.addView(r);
+    }
+
+    /** "A, B & C" of the names whose patch is present, from (present, name) pairs; null when none is. */
+    private static String names(Object... pairs) {
+        java.util.List<String> present = new java.util.ArrayList<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) if ((Boolean) pairs[i]) present.add((String) pairs[i + 1]);
+        if (present.isEmpty()) return null;
+        if (present.size() == 1) return present.get(0);
+        return String.join(", ", present.subList(0, present.size() - 1)) + " & " + present.get(present.size() - 1);
+    }
+
+    /** UI: how Maps looks. */
+    private void buildUiPage(LinearLayout body) {
         if (Shapes.rectShapesPatched()) {
             Switch rect = new Switch(this);
             rect.setChecked(Shapes.enabled(this));
@@ -109,30 +177,9 @@ public final class CustomizationActivity extends Activity {
         if (Shapes.blackThemePatched()) {
             Switch black = new Switch(this);
             black.setChecked(Shapes.blackEnabled(this));
-            body.addView(toggleRow("Black theme", "Also disables light & dark theme", black));
+            body.addView(toggleRow("Black theme", "Choosing a theme in Maps settings turns this off", black));
             black.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
                 Shapes.setBlackEnabled(this, on);
-                restartSoon(b);
-            });
-        }
-
-        if (Shapes.navZoomPatched()) {
-            Switch navz = new Switch(this);
-            navz.setChecked(Shapes.navZoomEnabled(this));
-            body.addView(toggleRow("Zoom controls in navigation", null, navz));
-            navz.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
-                Shapes.setNavZoomEnabled(this, on);
-                // no restart: the navigation ticker adds and removes the tiles live
-            });
-        }
-
-        if (Shapes.powerSavingPatched()) {
-            Switch power = new Switch(this);
-            power.setChecked(PowerSaving.allPhones(this));
-            body.addView(toggleRow("Power saving mode", "Enables the power saving mode from pixels for all devices", power));
-            power.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
-                PowerSaving.setAllPhones(this, on);
-                // Maps asks whether to offer the feature when it starts
                 restartSoon(b);
             });
         }
@@ -147,7 +194,10 @@ public final class CustomizationActivity extends Activity {
                 restartSoon(b);
             });
         }
+    }
 
+    /** Hide Telemetry: what Maps shows that it should not. */
+    private void buildHidePage(LinearLayout body) {
         if (Shapes.hideAdsPatched()) {
             Switch ads = new Switch(this);
             ads.setChecked(Shapes.hideAdsEnabled(this));
@@ -186,6 +236,27 @@ public final class CustomizationActivity extends Activity {
             directory.setOnCheckedChangeListener((CompoundButton b, boolean on) -> Shapes.setHideDirectoryEnabled(this, on));
         }
 
+        if (Shapes.hideAiPatched()) {
+            Switch ai = new Switch(this);
+            ai.setChecked(Shapes.hideAiEnabled(this));
+            body.addView(toggleRow("Hide AI", null, ai));
+            // read each time a place sheet opens, so no restart
+            ai.setOnCheckedChangeListener((CompoundButton b, boolean on) -> Shapes.setHideAiEnabled(this, on));
+        }
+    }
+
+    /** Misc Features. */
+    private void buildMiscPage(LinearLayout body) {
+        if (Shapes.navZoomPatched()) {
+            Switch navz = new Switch(this);
+            navz.setChecked(Shapes.navZoomEnabled(this));
+            body.addView(toggleRow("Zoom controls in navigation", null, navz));
+            navz.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
+                Shapes.setNavZoomEnabled(this, on);
+                // no restart: the navigation ticker adds and removes the tiles live
+            });
+        }
+
         if (Shapes.betterOfflinePatched()) {
             Switch offline = new Switch(this);
             offline.setChecked(Shapes.betterOfflineEnabled(this));
@@ -195,21 +266,22 @@ public final class CustomizationActivity extends Activity {
         }
 
         if (Shapes.locationSourcePatched()) {
-            // OsmAnd-style single choice. Google Play Services is always listed, but greyed
-            // out and unselectable while Play services is missing or disabled.
-            final boolean playAvailable = Shapes.playServicesUsable(this);
-            final boolean usePlay = playAvailable && Shapes.playLocationEnabled(this);
-            View locRow = row("Location source", usePlay ? "Google Play Services" : "Android API");
+            // OsmAnd-style single choice. Every source is always listed; microg Services and
+            // Google Play Services are greyed out and unselectable while they cannot answer.
+            final String[] sources = {Shapes.SOURCE_ANDROID, Shapes.SOURCE_MICROG, Shapes.SOURCE_GOOGLE};
+            final String[] options = {"Android API", "microg Services", "Google Play Services"};
+            final boolean[] usable = new boolean[sources.length];
+            for (int i = 0; i < sources.length; i++) usable[i] = Shapes.locationSourceUsable(this, sources[i]);
+            final int inUse = java.util.Arrays.asList(sources).indexOf(Shapes.locationSourceInUse(this));
+            View locRow = row("Location source", options[inUse]);
             locRow.setOnClickListener(v -> {
-                final String[] options = {"Android API", "Google Play Services"};
-                ChoiceAdapter adapter = new ChoiceAdapter(this, options, playAvailable, text(), dark ? 0xFF6B6B6B : 0xFFB0B0B0);
+                ChoiceAdapter adapter = new ChoiceAdapter(this, options, usable, text(), dark ? 0xFF6B6B6B : 0xFFB0B0B0);
                 new AlertDialog.Builder(this, dark ? android.R.style.Theme_DeviceDefault_Dialog_Alert : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
                         .setTitle("Location source")
-                        .setSingleChoiceItems(adapter, usePlay ? 1 : 0, (d, which) -> {
+                        .setSingleChoiceItems(adapter, inUse, (d, which) -> {
                             d.dismiss();
-                            boolean play = which == 1;
-                            if (play == usePlay) return;
-                            Shapes.setPlayLocationEnabled(this, play);
+                            if (which == inUse) return;
+                            Shapes.setLocationSource(this, sources[which]);
                             restartSoon(v);
                         })
                         .setNegativeButton("Cancel", null)
@@ -222,26 +294,150 @@ public final class CustomizationActivity extends Activity {
             // its own screen (Enable / Host / Port), like OsmAnd's
             LinearLayout proxyRow = rowBase("Proxy", proxySummary());
             proxySub = (TextView) ((LinearLayout) proxyRow.getChildAt(0)).getChildAt(1);
-            proxyRow.setOnClickListener(v -> startActivity(new android.content.Intent(this, ProxyActivity.class)));
+            proxyRow.setOnClickListener(v -> startActivity(Screens.intent(this, ProxyActivity.class)));
             body.addView(proxyRow);
         }
-
-        ScrollView sv = new ScrollView(this);
-        sv.addView(body);
-        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
-        setContentView(root);
     }
 
-    /** Single-choice list whose second entry (Google Play Services) is greyed out and unselectable
-     *  while Play services is unavailable. */
-    private static final class ChoiceAdapter extends android.widget.ArrayAdapter<String> {
-        private final boolean playAvailable; private final int on, off;
-        ChoiceAdapter(android.content.Context c, String[] items, boolean playAvailable, int on, int off) {
-            super(c, android.R.layout.simple_list_item_single_choice, items);
-            this.playAvailable = playAvailable; this.on = on; this.off = off;
+    /** Waze Features, opened from its own account sheet row: the speeding chime and speed cameras. */
+    private void buildWazePage(LinearLayout body) {
+        if (Shapes.speedingChimePatched()) {
+            LinearLayout chimeRow = rowBase("Speeding chime", CHIME_LABELS[Shapes.speedingChime(this)]);
+            TextView chimeSub = (TextView) ((LinearLayout) chimeRow.getChildAt(0)).getChildAt(1);
+            chimeRow.setOnClickListener(v -> choose("Speeding chime", CHIME_LABELS, Shapes.speedingChime(this), which -> {
+                // read on every speedometer change, so no restart
+                Shapes.setSpeedingChime(this, which);
+                chimeSub.setText(CHIME_LABELS[which]);
+            }));
+            body.addView(chimeRow);
         }
-        @Override public boolean isEnabled(int position) { return position == 0 || playAvailable; }
-        @Override public boolean areAllItemsEnabled() { return playAvailable; }
+
+        if (Shapes.speedCamerasPatched()) {
+            Switch cams = new Switch(this);
+            cams.setChecked(SpeedCameras.enabled(this));
+            body.addView(toggleRow("Speed cameras", "Alerts for cameras ahead. Downloads the cameras near you from OpenStreetMap", cams));
+            Switch camsMap = new Switch(this);
+            camsMap.setChecked(SpeedCameras.onMap(this));
+            camsMap.setEnabled(cams.isChecked());
+            body.addView(toggleRow("Speed cameras on the map", null, camsMap));
+            // both read live, so no restart
+            cams.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
+                SpeedCameras.setEnabled(this, on);
+                camsMap.setEnabled(on);
+            });
+            camsMap.setOnCheckedChangeListener((CompoundButton b, boolean on) -> SpeedCameras.setOnMap(this, on));
+        }
+    }
+
+    /** SpeedAlerts' choices, in order. */
+    private static final String[] CHIME_LABELS = {"Off", "Past the speed limit", "When the speedometer turns red", "10 mph or 20 km/h over the limit"};
+    private static final String[] IDLE_LABELS = {"Off", "After 15 seconds", "After 30 seconds", "After 1 minute", "After 2 minutes"};
+    private static final String[] LOW_FPS_LABELS = {"Off", "While navigating", "Everywhere"};
+
+    private static String idleSummary(int seconds) {
+        for (int i = 0; i < PowerSaving.IDLE_CHOICES.length; i++) {
+            if (PowerSaving.IDLE_CHOICES[i] == seconds) return IDLE_LABELS[i];
+        }
+        return seconds > 0 ? "After " + seconds + " seconds" : "Off";
+    }
+
+    private static String lowFpsSummary(int mode) {
+        if (mode <= 0 || mode >= LOW_FPS_LABELS.length) return "Off";
+        return LOW_FPS_LABELS[mode] + ": 15 fps and 30 Hz, as on the power saving screen";
+    }
+
+    /** Power Saving Options: Power saving mode itself, then the options around it. */
+    private void buildPowerPage(LinearLayout body) {
+        Switch power = new Switch(this);
+        power.setChecked(PowerSaving.allPhones(this));
+        body.addView(toggleRow("Power saving mode", "Enables the power saving mode from pixels for all devices", power));
+        power.setOnCheckedChangeListener((CompoundButton b, boolean on) -> {
+            PowerSaving.setAllPhones(this, on);
+            // Maps asks whether to offer the feature when it starts
+            restartSoon(b);
+        });
+
+        Switch unlocked = new Switch(this);
+        unlocked.setChecked(PowerSaving.unlocked(this));
+        body.addView(toggleRow("Open without locking", "A button in navigation opens the power saving screen", unlocked));
+        // no restart: the navigation ticker adds and removes the button live
+        unlocked.setOnCheckedChangeListener((CompoundButton b, boolean on) -> PowerSaving.setUnlocked(this, on));
+
+        LinearLayout idleRow = rowBase("Auto-switch when idle", idleSummary(PowerSaving.idleSeconds(this)));
+        TextView idleSub = (TextView) ((LinearLayout) idleRow.getChildAt(0)).getChildAt(1);
+        idleRow.setOnClickListener(v -> {
+            int current = 0;
+            for (int i = 0; i < PowerSaving.IDLE_CHOICES.length; i++) {
+                if (PowerSaving.IDLE_CHOICES[i] == PowerSaving.idleSeconds(this)) current = i;
+            }
+            choose("Auto-switch when idle", IDLE_LABELS, current, which -> {
+                // read on every navigation tick, so no restart
+                PowerSaving.setIdleSeconds(this, PowerSaving.IDLE_CHOICES[which]);
+                idleSub.setText(IDLE_LABELS[which]);
+            });
+        });
+        body.addView(idleRow);
+
+        Switch speedo = new Switch(this);
+        speedo.setChecked(PowerSaving.speedometer(this));
+        body.addView(toggleRow("Speedometer", "Your speed and the speed limit on the power saving screen", speedo));
+        // read each time the power saving screen opens, so no restart
+        speedo.setOnCheckedChangeListener((CompoundButton b, boolean on) -> PowerSaving.setSpeedometer(this, on));
+
+        LinearLayout fpsRow = rowBase("Lower frame rate", lowFpsSummary(PowerSaving.lowFps(this)));
+        fpsRow.setOnClickListener(v -> choose("Lower frame rate", LOW_FPS_LABELS, PowerSaving.lowFps(this), which -> {
+            if (which == PowerSaving.lowFps(this)) return;
+            PowerSaving.setLowFps(this, which);
+            // the window's rate is set when Maps starts
+            restartSoon(v);
+        }));
+        body.addView(fpsRow);
+
+        LinearLayout themeRow = rowBase("Power saving theme", themeSummary(PowerSaving.theme(this)));
+        themeRow.setOnClickListener(v -> choose("Power saving theme", THEME_LABELS, PowerSaving.theme(this), which -> {
+            if (which == PowerSaving.theme(this)) return;
+            PowerSaving.setTheme(this, which);
+            // the map picks its style when it is built
+            restartSoon(v);
+        }));
+        body.addView(themeRow);
+    }
+
+    private static final String[] THEME_LABELS = {"Off", "While navigating", "Everywhere"};
+
+    private static String themeSummary(int mode) {
+        if (mode == PowerSaving.THEME_NAV) return "While navigating: the power saving screen's black map";
+        if (mode == PowerSaving.THEME_ALL) return "Everywhere: the power saving screen's black map, roads only, no place names";
+        return "Off";
+    }
+
+    private interface Choice { void chosen(int which); }
+
+    /** A single-choice dialog in Maps' theme, as the Location source row uses. */
+    private void choose(String title, String[] labels, int checked, Choice then) {
+        new AlertDialog.Builder(this, dark ? android.R.style.Theme_DeviceDefault_Dialog_Alert : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
+                .setTitle(title)
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    d.dismiss();
+                    then.chosen(which);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Single-choice list whose unavailable entries (a location source that cannot answer) are
+     *  greyed out and unselectable. */
+    private static final class ChoiceAdapter extends android.widget.ArrayAdapter<String> {
+        private final boolean[] available; private final int on, off;
+        ChoiceAdapter(android.content.Context c, String[] items, boolean[] available, int on, int off) {
+            super(c, android.R.layout.simple_list_item_single_choice, items);
+            this.available = available; this.on = on; this.off = off;
+        }
+        @Override public boolean isEnabled(int position) { return available[position]; }
+        @Override public boolean areAllItemsEnabled() {
+            for (boolean a : available) if (!a) return false;
+            return true;
+        }
         @Override public View getView(int position, View convertView, android.view.ViewGroup parent) {
             View row = super.getView(position, convertView, parent);
             boolean enabled = isEnabled(position);
@@ -293,4 +489,99 @@ public final class CustomizationActivity extends Activity {
     }
 
     private int dp(int v) { return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()); }
+
+    /**
+     * The account sheet's "Customization" row: opens this screen and leaves the sheet open
+     * behind it (when Keep account sheet open is applied; otherwise the flag is unread).
+     * The row builder hands over its Activity, because the sheet calls row listeners with
+     * a null View.
+     */
+    public static final class Open implements View.OnClickListener {
+        private final android.content.Context context;
+
+        public Open(android.content.Context context) { this.context = context; }
+
+        @Override
+        public void onClick(View v) {
+            Shapes.SKIP_DISMISS = true;
+            context.startActivity(Screens.intent(context, CustomizationActivity.class));
+        }
+    }
+
+    /** The Power Saving Options row on the account sheet: this screen's power page, the sheet left open behind it. */
+    public static final class OpenPower implements View.OnClickListener {
+        private final android.content.Context context;
+
+        public OpenPower(android.content.Context context) { this.context = context; }
+
+        @Override
+        public void onClick(View v) {
+            Shapes.SKIP_DISMISS = true;
+            context.startActivity(Screens.intent(context, CustomizationActivity.class).putExtra(EXTRA_PAGE, PAGE_POWER));
+        }
+    }
+
+    /** The Waze Features row on the account sheet: this screen's Waze page, the sheet left open behind it. */
+    public static final class OpenWaze implements View.OnClickListener {
+        private final android.content.Context context;
+
+        public OpenWaze(android.content.Context context) { this.context = context; }
+
+        @Override
+        public void onClick(View v) {
+            Shapes.SKIP_DISMISS = true;
+            context.startActivity(Screens.intent(context, CustomizationActivity.class).putExtra(EXTRA_PAGE, PAGE_WAZE));
+        }
+    }
+
+    /**
+     * The Power Saving Options row's icon: Android's battery saver, a battery outline with a
+     * plus, cut out of Maps' own solid battery (gs_battery_full_fill1) so it is tinted like the
+     * sheet's other icons, in every theme.
+     */
+    public static android.graphics.drawable.Drawable powerRowIcon(android.graphics.drawable.Drawable battery) {
+        return battery == null ? null : new BatterySaverIcon(battery);
+    }
+
+    /** [battery] seen through a stencil on Maps' 24 x 24 icon grid: its walls, and a plus inside. */
+    static final class BatterySaverIcon extends android.graphics.drawable.DrawableWrapper {
+        private final android.graphics.Path stencil = new android.graphics.Path(), scaled = new android.graphics.Path();
+        private final android.graphics.Matrix matrix = new android.graphics.Matrix();
+
+        BatterySaverIcon(android.graphics.drawable.Drawable battery) {
+            super(battery);
+            stencil.setFillType(android.graphics.Path.FillType.EVEN_ODD);
+            stencil.addRect(-1, -1, 25, 25, android.graphics.Path.Direction.CW);
+            // The battery's inside, as Maps' empty battery (gs_battery_0_bar) has it ...
+            stencil.addRect(9, 6, 15, 20, android.graphics.Path.Direction.CW);
+            // ... with a plus in its middle, clear of the walls.
+            float cx = 12, cy = 13, a = 2.2f, t = 0.9f;
+            stencil.moveTo(cx - t, cy - a);
+            stencil.lineTo(cx + t, cy - a);
+            stencil.lineTo(cx + t, cy - t);
+            stencil.lineTo(cx + a, cy - t);
+            stencil.lineTo(cx + a, cy + t);
+            stencil.lineTo(cx + t, cy + t);
+            stencil.lineTo(cx + t, cy + a);
+            stencil.lineTo(cx - t, cy + a);
+            stencil.lineTo(cx - t, cy + t);
+            stencil.lineTo(cx - a, cy + t);
+            stencil.lineTo(cx - a, cy - t);
+            stencil.lineTo(cx - t, cy - t);
+            stencil.close();
+        }
+
+        @Override
+        public void draw(android.graphics.Canvas c) {
+            android.graphics.Rect b = getBounds();
+            if (b.isEmpty()) return;
+            matrix.setScale(b.width() / 24f, b.height() / 24f);
+            matrix.postTranslate(b.left, b.top);
+            stencil.transform(matrix, scaled);
+            int saved = c.save();
+            c.clipPath(scaled);
+            super.draw(c);
+            c.restoreToCount(saved);
+        }
+    }
 }

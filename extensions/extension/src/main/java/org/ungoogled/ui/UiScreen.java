@@ -11,7 +11,6 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.WindowInsets;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -52,6 +51,11 @@ abstract class UiScreen extends Activity {
         super.attachBaseContext(Shapes.wrap(base));
     }
 
+    @Override protected void onCreate(android.os.Bundle state) {
+        Screens.prepare(this);
+        super.onCreate(state);
+    }
+
     /** Builds the window: title bar with close, and an empty scrolling [body]. */
     void frame(String titleText) {
         frame(titleText, true);
@@ -78,8 +82,8 @@ abstract class UiScreen extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(bg());
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets sb = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
-            v.setPadding(sb.left, sb.top, sb.right, sb.bottom);
+            int[] sb = Shapes.barInsets(insets, true);
+            v.setPadding(sb[0], sb[1], sb[2], sb[3]);
             return insets;
         });
 

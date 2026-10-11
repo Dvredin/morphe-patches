@@ -44,6 +44,8 @@ sourceSets {
 tasks.test {
     useJUnit()
     maxHeapSize = "2g"
+    // Robolectric closes Android file descriptors through reflective access on JDK 21.
+    jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     testLogging { events("passed", "failed", "skipped"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }

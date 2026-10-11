@@ -4,9 +4,11 @@ import app.morphe.patcher.extensions.InstructionExtensions.removeInstructions
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import app.morphe.patcher.patch.bytecodePatch
 import org.ungoogled.patches.shared.Constants.COMPATIBILITY_MAPS
+import org.ungoogled.patches.maps.microg.MicrogSelection
 
 /**
  * Every row before its own call is set up identically: `move-object vN, v6`
@@ -39,16 +41,46 @@ private fun MutableMethod.removeWholeRows(start: Int, end: Int, what: String) {
     removeInstructions(start, end - start)
 }
 
+/**
+ * Removes, from [start] to [end], every whole row built by a call [builtBy] matches, and
+ * only those: Customization screen adds its own row right after Settings, and depending on
+ * the order patches run in it may already be there. A row runs from just after the previous
+ * row's add to its own add on the same list; [start] must be right after Settings' own add.
+ */
+private fun MutableMethod.removeRowsBuilt(start: Int, end: Int, expected: Int, what: String, builtBy: (MethodReference) -> Boolean) {
+    val instructions = implementation!!.instructions
+    fun call(i: Int) = ((instructions[i] as? ReferenceInstruction)?.reference as? MethodReference)
+    val list = (instructions[start - 1] as Instruction35c).registerC
+    val rows = mutableListOf<IntRange>()
+    var rowStart = start
+    for (i in start until end) {
+        val c = call(i) ?: continue
+        if (c.definingClass == "Lbwxy;" && c.name == "i" && (instructions[i] as Instruction35c).registerC == list) {
+            rows += rowStart..i
+            rowStart = i + 1
+        }
+    }
+    if (rowStart != end) throw PatchException("$what: code after the last row before the list is finished")
+    val doomed = rows.filter { row -> row.any { i -> call(i)?.let(builtBy) == true } }
+    if (doomed.size != expected) throw PatchException("$what: expected $expected rows to remove, found ${doomed.size}")
+    doomed.asReversed().forEach { removeWholeRows(it.first, it.last + 1, what) }
+}
+
+private val HELP_AND_FEEDBACK: (MethodReference) -> Boolean = { it.definingClass == "Lbtqs;" && it.name == "cI" }
+private val YOUR_DATA: (MethodReference) -> Boolean =
+    { it.definingClass == "Lolr;" && it.name == "a" && it.parameterTypes.isEmpty() && it.returnType == "Lbrmi;" }
+
 @Suppress("unused")
 val trimAccountMenuPatch = bytecodePatch(
     name = "Trim account menu",
     description = "Removes Your Timeline, Location sharing, Your data in Maps and Help & feedback " +
-        "from the account sheet.",
+        "from the account sheet. Left out with Add microG support, whose account features need them.",
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_MAPS)
 
     execute {
+        if (MicrogSelection.replaces(this, "Trim account menu")) return@execute
         // Modern builder: three independent cuts, each a pure removal -- the
         // rows on both sides of every cut are left completely alone, so
         // nothing needs to be reconstructed.
@@ -68,7 +100,7 @@ val trimAccountMenuPatch = bytecodePatch(
             val m = fp.instructionMatches
             val start = m[2].index + 1 // right after Settings' own row-add
             val end = m.last().index   // right at the list finalize
-            fp.method.removeWholeRows(start, end, "Help & feedback")
+            fp.method.removeRowsBuilt(start, end, 1, "Help & feedback", HELP_AND_FEEDBACK)
         }
 
         // Legacy builder: neither span references the ambiguous constructor
@@ -79,7 +111,7 @@ val trimAccountMenuPatch = bytecodePatch(
             val m = fp.instructionMatches
             val start = m[2].index + 1 // right after Settings' own row-add
             val end = m.last().index   // right at the list finalize
-            fp.method.removeWholeRows(start, end, "legacy Settings")
+            fp.method.removeRowsBuilt(start, end, 2, "legacy Settings") { HELP_AND_FEEDBACK(it) || YOUR_DATA(it) }
         }
         LegacyYourProfileFingerprint.let { fp ->
             val m = fp.instructionMatches
