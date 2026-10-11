@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "patches": [
     {
       "name": "120 refresh rate",
@@ -769,7 +769,7 @@
         {
           "key": "blackMap",
           "title": "Black night map",
-          "description": "The night map's background black as well. Morphe Manager 1.35 builds with this crash Waze when the map opens; patch with Morphe Desktop.",
+          "description": "The night map's background black as well. Skipped by Morphe Manager 1.35 and other patcher 1.15+ builds, which would crash Waze when the map opens; patch with Morphe Desktop to get it.",
           "required": false,
           "type": "kotlin.Boolean",
           "default": false,
@@ -912,7 +912,7 @@
     },
     {
       "name": "Map skin",
-      "description": "The old Waze mods' map skin, as changes to Waze's own: bigger map labels, a wider navigation arrow head and a warm day background. The night background is Full black's. Morphe Manager 1.35 builds with this crash Waze when the map opens; patch with Morphe Desktop.",
+      "description": "The old Waze mods' map skin, as changes to Waze's own: bigger map labels, a wider navigation arrow head and a warm day background. The night background is Full black's. Skipped by Morphe Manager 1.35 and other patcher 1.15+ builds, which would crash Waze when the map opens; patch with Morphe Desktop to get it.",
       "default": false,
       "category": null,
       "dependencies": [],

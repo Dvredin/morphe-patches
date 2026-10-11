@@ -1,3 +1,9 @@
+## [2.2.2](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.1...v2.2.2) (2026-10-11)
+
+### 🐛 Bug Fixes
+
+* map skin & black night map are skipped when patching with morphe manager so waze can't crash ([7fef96a](https://github.com/bearinmindcat/morphe-patches/commit/7fef96ab5c10fdf1a510dfb8f8fd665e9c1ca68c))
+
 ## [2.2.1](https://github.com/bearinmindcat/morphe-patches/compare/v2.2.0...v2.2.1) (2026-10-11)
 
 ### 🐛 Bug Fixes
