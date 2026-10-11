@@ -30,14 +30,45 @@ private fun hexColour(value: String?, what: String): String {
 }
 
 /**
- * Why Map skin, and Full black's black night map, are off by default: they change files under
- * `assets/res/`, and Morphe Manager 1.35 (patcher 1.15) then also writes empty folder entries into
- * the APK for every parent folder of a changed asset. Waze 5.24's native map engine treats the
- * `assets/res/` folder entry as a file and crashes about a second after the map appears, on every
- * launch. Morphe Desktop (patcher 1.14) writes no folder entries, so its builds run.
+ * Why Map skin, and Full black's black night map, are off by default and skipped by newer patchers:
+ * they change files under `assets/res/`, and Morphe Manager 1.35 (patcher 1.15) then also writes
+ * empty folder entries into the APK for every parent folder of a changed asset. Waze 5.24's native
+ * map engine treats the `assets/res/` folder entry as a file and crashes about a second after the
+ * map appears, on every launch. Morphe Desktop (patcher 1.14) writes no folder entries, so its
+ * builds run.
  */
 internal const val MANAGER_ASSET_WARNING =
-    "Morphe Manager 1.35 builds with this crash Waze when the map opens; patch with Morphe Desktop."
+    "Skipped by Morphe Manager 1.35 and other patcher 1.15+ builds, which would crash Waze when the map " +
+        "opens; patch with Morphe Desktop to get it."
+
+/** The version of the patcher running these patches ("1.15.1"), from its own version.properties; null if unreadable. */
+private fun runningPatcherVersion(): String? = try {
+    // The patcher's classes come from the app running the patches (Morphe Manager or Desktop), not from
+    // this bundle, so this is that app's patcher.
+    PatchException::class.java.getResourceAsStream("/app/morphe/patcher/version.properties")?.use { stream ->
+        java.util.Properties().apply { load(stream) }.getProperty("version")?.trim()
+    }
+} catch (_: Throwable) {
+    null
+}
+
+/**
+ * Whether Waze's assets can be changed without crashing Waze: only under a patcher from before 1.15,
+ * which writes no folder entries. Logs why when not, naming [what] was skipped.
+ */
+internal fun wazeAssetEditsSafe(what: String): Boolean {
+    val version = runningPatcherVersion()
+    val parts = version?.split('.', '-')?.mapNotNull { it.toIntOrNull() }.orEmpty()
+    val safe = parts.size >= 2 && (parts[0] < 1 || (parts[0] == 1 && parts[1] < 15))
+    if (!safe) {
+        // The patcher's own logger, which Morphe Desktop prints and Morphe Manager shows in its patch log.
+        java.util.logging.Logger.getLogger("app.morphe.patcher.Patcher").warning(
+            "$what skipped: patcher ${version ?: "(unknown version)"} adds folder entries to the APK that crash " +
+                "Waze when the map opens. Patch with Morphe Desktop to get it.",
+        )
+    }
+    return safe
+}
 
 @Suppress("unused")
 val wazeMapSkinPatch = resourcePatch(
@@ -69,6 +100,7 @@ val wazeMapSkinPatch = resourcePatch(
     )
 
     execute {
+        if (!wazeAssetEditsSafe("Map skin")) return@execute
         val fonts = mapOf("huge" to fontHuge!!, "big" to fontBig!!, "medium" to fontMedium!!, "small" to fontSmall!!)
         val head = String.format(Locale.ROOT, "%.1f", arrowHead!!)
         for (path in SKIN_STRUCTURES) {

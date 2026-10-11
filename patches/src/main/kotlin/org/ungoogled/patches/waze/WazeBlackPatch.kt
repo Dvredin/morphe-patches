@@ -39,7 +39,7 @@ val wazeFullBlackPatch = resourcePatch(
 
     execute {
         // 1. The night map: its background, and the areas not loaded yet.
-        if (blackMap == true) for (path in NIGHT_SKINS) {
+        if (blackMap == true && wazeAssetEditsSafe("Black night map")) for (path in NIGHT_SKINS) {
             val skin = get(path)
             if (!skin.isFile) throw PatchException("$path not found")
             val before = skin.readText()
